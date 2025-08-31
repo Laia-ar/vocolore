@@ -1,0 +1,8 @@
+faster-whisper
+sounddevice
+numpy
+rich
+pynput
+soundfile
+python-dotenv
+requests
