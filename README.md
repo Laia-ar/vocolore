@@ -1,13 +1,11 @@
 # Vocolore
 
-Vocolore turns kids’ voice descriptions into printed coloring pages. It captures speech over Wi‑Fi (ESP32), transcribes it with Whisper, generates an image via Freepik, and (optionally) opens/prints the page for coloring. It still includes the original push-to-talk and continuous transcription utilities.
+Vocolore turns kids’ voice descriptions into printed coloring pages. It captures speech over Wi‑Fi (ESP32), transcribes it with Whisper, generates an image via Freepik, and (optionally) opens/prints the page for coloring.
 
 ## Features
 
 - **WiFi kid-friendly flow**: Capture audio from an ESP32 (Atom Echo), transcribe with Whisper, generate a Freepik image, and optionally print/open it.
 - **Debug & user UIs**: Debug UI exposes live toggles (Freepik on/off, open/print, min/max clip durations, timing logs) and launches the transcriber; User UI shows readiness, button state, transcription, and last image preview.
-- **Push-to-Talk Transcription**: Transcribe audio only when a key is pressed.
-- **Real-time Continuous Transcription**: Continuously transcribe audio from your microphone.
 
 ## Setup
 
@@ -26,24 +24,6 @@ To set up and run this project, follow these steps:
    ```
 
 ## Usage
-
-### Push-to-Talk Transcription
-
-To use the push-to-talk feature, run:
-
-```bash
-python push_to_talk_transcribe.py
-```
-Press and hold the spacebar to record, and release to transcribe.
-
-### Real-time Continuous Transcription
-
-To use the real-time continuous transcription feature, run:
-
-```bash
-python realtime_transcribe.py
-```
-The transcription will appear in your console as you speak.
 
 ### WiFi Transcription (ESP32 stream)
 
