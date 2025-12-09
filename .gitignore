@@ -1,1 +1,29 @@
-config.env
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+.env
+.runtime_config.json
+
+# Local artifacts
+clips/
+images/
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build/venv
+env/
+venv/
+.venv/
+
+# Arduino/PlatformIO
+.pio/
+*.bin
+*.elf
+
