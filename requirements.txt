@@ -6,3 +6,4 @@ pynput
 soundfile
 python-dotenv
 requests
+Pillow

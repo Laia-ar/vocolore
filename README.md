@@ -43,6 +43,22 @@ python realtime_transcribe.py
 ```
 The transcription will appear in your console as you speak.
 
+### WiFi Transcription (ESP32 stream)
+
+- Core listener/transcriber:  
+  ```bash
+  python wifi_transcribe.py
+  ```
+- Debug UI with live toggles (Freepik, print/open image, min/max clip durations):  
+  ```bash
+  python wifi_debug_ui.py
+  ```
+  This writes a runtime config JSON watched by `wifi_transcribe.py`.
+- Simple user UI (start/stop, status, latest transcript/image):  
+  ```bash
+  python wifi_user_ui.py
+  ```
+
 ## Requirements
 
 - Python 3.x
