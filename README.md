@@ -66,3 +66,15 @@ Some functionalities of this project may require a Freepik API key. To use these
     FREEPIK_API_KEY=your_freepik_api_key_here
     ```
     Replace `your_freepik_api_key_here` with your actual Freepik API key.
+
+Optional printing options:
+```
+# send directly to a printer
+PRINT_IMAGE=1
+PRINT_COMMAND=/usr/bin/lp
+
+# or export a PDF copy alongside the PNG
+PRINT_TO_PDF=1
+PRINT_PDF_DIR=printouts
+# PDF export is rendered on an A4 canvas (300 DPI)
+```

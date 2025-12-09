@@ -46,6 +46,7 @@ class DebugUI:
         self.var_freepik = tk.BooleanVar(value=cfg.get("ENABLE_FREEPIK", False))
         self.var_open = tk.BooleanVar(value=cfg.get("OPEN_IMAGE", False))
         self.var_print = tk.BooleanVar(value=cfg.get("PRINT_IMAGE", False))
+        self.var_pdf = tk.BooleanVar(value=cfg.get("PRINT_TO_PDF", False))
         self.var_debug = tk.BooleanVar(value=cfg.get("DEBUG_TIMING", False))
         self.chk_freepik = tk.Checkbutton(opt_frame, text="Freepik", variable=self.var_freepik, command=self.apply_config)
         self.chk_freepik.pack(side="left", padx=4)
@@ -53,6 +54,8 @@ class DebugUI:
         self.chk_open.pack(side="left", padx=4)
         self.chk_print = tk.Checkbutton(opt_frame, text="Print image", variable=self.var_print, command=self.apply_config)
         self.chk_print.pack(side="left", padx=4)
+        self.chk_pdf = tk.Checkbutton(opt_frame, text="PDF copy", variable=self.var_pdf, command=self.apply_config)
+        self.chk_pdf.pack(side="left", padx=4)
         tk.Checkbutton(opt_frame, text="Debug timing", variable=self.var_debug, command=self.apply_config).pack(side="left", padx=4)
 
         num_frame = tk.Frame(root)
@@ -91,6 +94,7 @@ class DebugUI:
             "ENABLE_FREEPIK": self.var_freepik.get(),
             "OPEN_IMAGE": self.var_open.get() and self.var_freepik.get(),
             "PRINT_IMAGE": self.var_print.get() and self.var_freepik.get(),
+            "PRINT_TO_PDF": self.var_pdf.get() and self.var_freepik.get(),
             "DEBUG_TIMING": self.var_debug.get(),
             "RUNNING": self.running,
         }
@@ -111,9 +115,11 @@ class DebugUI:
         state = tk.NORMAL if self.var_freepik.get() else tk.DISABLED
         self.chk_open.config(state=state)
         self.chk_print.config(state=state)
+        self.chk_pdf.config(state=state)
         if not self.var_freepik.get():
             self.var_open.set(False)
             self.var_print.set(False)
+            self.var_pdf.set(False)
 
     def apply_config(self):
         self._write_runtime_config()
@@ -136,6 +142,7 @@ class DebugUI:
         env["ENABLE_FREEPIK"] = "1" if self.var_freepik.get() else "0"
         env["OPEN_IMAGE"] = "1" if self.var_open.get() else "0"
         env["PRINT_IMAGE"] = "1" if self.var_print.get() else "0"
+        env["PRINT_TO_PDF"] = "1" if self.var_pdf.get() else "0"
         env["DEBUG_TIMING"] = "1" if self.var_debug.get() else "0"
         env["MIN_AUDIO_SEC"] = str(self.entry_min.get())
         env["MAX_BUFFER_SEC"] = str(self.entry_max.get())

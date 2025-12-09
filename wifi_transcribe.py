@@ -7,12 +7,18 @@ import threading
 import time
 import wave
 import gc
+from pathlib import Path
 
 import numpy as np
 import requests
 from dotenv import load_dotenv
 from faster_whisper import WhisperModel
 from rich.console import Console
+
+try:
+    from PIL import Image  # type: ignore
+except ImportError:
+    Image = None
 
 # Load environment early so config below picks up .env/config.env values
 load_dotenv()
@@ -34,6 +40,8 @@ ENABLE_FREEPIK = os.getenv("ENABLE_FREEPIK", "0") == "1"
 FREEPIK_WEBHOOK_URL = os.getenv("FREEPIK_WEBHOOK_URL", "https://www.example.com/webhook")
 PRINT_IMAGE = os.getenv("PRINT_IMAGE", "0") == "1"
 PRINT_COMMAND = os.getenv("PRINT_COMMAND", "/usr/bin/lp")
+PRINT_TO_PDF = os.getenv("PRINT_TO_PDF", "0") == "1"
+PRINT_PDF_DIR = os.getenv("PRINT_PDF_DIR", "printouts")
 SAVE_CLIP_WAV = os.getenv("SAVE_CLIP_WAV", "1") == "1"
 CLIP_WAV_DIR = os.getenv("CLIP_WAV_DIR", "clips")
 DEBUG_TIMING = os.getenv("DEBUG_TIMING", "0") == "1"
@@ -54,6 +62,7 @@ runtime_flags = {
     "ENABLE_FREEPIK": ENABLE_FREEPIK,
     "PRINT_IMAGE": PRINT_IMAGE,
     "OPEN_IMAGE": OPEN_IMAGE,
+    "PRINT_TO_PDF": PRINT_TO_PDF,
     "MIN_AUDIO_SEC": MIN_AUDIO_SEC,
     "MAX_BUFFER_SEC": MAX_BUFFER_SEC,
     "DEBUG_TIMING": DEBUG_TIMING,
@@ -152,6 +161,8 @@ def config_watcher():
                         for key in ("ENABLE_FREEPIK", "PRINT_IMAGE", "OPEN_IMAGE"):
                             if key in data:
                                 runtime_flags[key] = bool(data[key])
+                        if "PRINT_TO_PDF" in data:
+                            runtime_flags["PRINT_TO_PDF"] = bool(data["PRINT_TO_PDF"])
                         for key in ("MIN_AUDIO_SEC", "MAX_BUFFER_SEC"):
                             if key in data:
                                 try:
@@ -181,6 +192,11 @@ def print_enabled() -> bool:
 def open_enabled() -> bool:
     with runtime_lock:
         return runtime_flags.get("OPEN_IMAGE", False)
+
+
+def pdf_enabled() -> bool:
+    with runtime_lock:
+        return runtime_flags.get("PRINT_TO_PDF", PRINT_TO_PDF)
 
 
 def current_min_audio_sec() -> float:
@@ -408,6 +424,8 @@ def send_image_generation_request(prompt: str):
                 if chunk:
                     fh.write(chunk)
         console.print(f"[bold green]Image saved to {filename}[/bold green]")
+
+        pdf_path = save_pdf_copy(filename)
         try:
             with runtime_lock:
                 runtime_flags["LAST_IMAGE"] = filename
@@ -416,18 +434,91 @@ def send_image_generation_request(prompt: str):
             console.print(f"[red]Failed to record image path:[/red] {exc}")
 
         if print_enabled():
+            target_path = pdf_path
+            if target_path is None:
+                target_path = make_a4_image_copy(filename, task_id)
             try:
-                subprocess.run([PRINT_COMMAND, filename], check=True)
-                console.print(f"[green]Sent image to printer via {PRINT_COMMAND}: {filename}[/green]")
+                subprocess.run([PRINT_COMMAND, target_path or filename], check=True)
+                console.print(f"[green]Sent image to printer via {PRINT_COMMAND}: {target_path or filename}[/green]")
             except subprocess.CalledProcessError as exc:
                 console.print(f"[red]Printing failed ({PRINT_COMMAND}):[/red] {exc}")
             except Exception as exc:
                 console.print(f"[red]Unexpected printing error:[/red] {exc}")
+        elif pdf_path:
+            console.print(f"[green]PDF copy ready at {pdf_path} (printing disabled).[/green]")
 
     except requests.RequestException as exc:
         console.print(f"[red]Freepik request error:[/red] {exc}")
     except Exception as exc:
         console.print(f"[red]Unexpected Freepik error:[/red] {exc}")
+
+
+def save_pdf_copy(image_path: str):
+    """Optionally write a PDF copy of the generated image."""
+    if not pdf_enabled():
+        return None
+    if Image is None:
+        console.print("[yellow]PRINT_TO_PDF is enabled but Pillow is not installed; skipping PDF export.[/yellow]")
+        return None
+    try:
+        os.makedirs(PRINT_PDF_DIR, exist_ok=True)
+        pdf_path = Path(PRINT_PDF_DIR) / (Path(image_path).stem + ".pdf")
+        with Image.open(image_path) as img:
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            # Create an A4 canvas at 300 DPI and center-fit the image
+            a4_w, a4_h = 2480, 3508  # pixels for 210x297 mm at 300 DPI
+            margin = 120  # ~10 mm margin
+            canvas = Image.new("RGB", (a4_w, a4_h), "white")
+            max_w, max_h = a4_w - 2 * margin, a4_h - 2 * margin
+            # Prefer filling the width (with aspect ratio) unless it exceeds page height
+            target_w = max_w
+            target_h = int(img.height * (target_w / img.width))
+            if target_h > max_h:
+                target_h = max_h
+                target_w = int(img.width * (target_h / img.height))
+            resized = img.resize((target_w, target_h))
+            x = (a4_w - target_w) // 2
+            y = (a4_h - target_h) // 2
+            canvas.paste(resized, (x, y))
+            canvas.save(pdf_path, "PDF", resolution=300.0)
+        console.print(f"[green]Saved PDF copy to {pdf_path}[/green]")
+        return str(pdf_path)
+    except Exception as exc:
+        console.print(f"[red]PDF export failed:[/red] {exc}")
+        return None
+
+
+def make_a4_image_copy(image_path: str, task_id: str = ""):
+    """Build a print-friendly A4-sized PNG with the image scaled to fill width."""
+    if Image is None:
+        return None
+    try:
+        os.makedirs(PRINT_PDF_DIR, exist_ok=True)
+        out_name = f"print_image_{task_id or Path(image_path).stem}.png"
+        out_path = Path(PRINT_PDF_DIR) / out_name
+        with Image.open(image_path) as img:
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            a4_w, a4_h = 2480, 3508
+            margin = 120
+            max_w, max_h = a4_w - 2 * margin, a4_h - 2 * margin
+            target_w = max_w
+            target_h = int(img.height * (target_w / img.width))
+            if target_h > max_h:
+                target_h = max_h
+                target_w = int(img.width * (target_h / img.height))
+            resized = img.resize((target_w, target_h))
+            canvas = Image.new("RGB", (a4_w, a4_h), "white")
+            x = (a4_w - target_w) // 2
+            y = (a4_h - target_h) // 2
+            canvas.paste(resized, (x, y))
+            canvas.save(out_path, "PNG")
+        console.print(f"[green]Prepared A4 print image at {out_path}[/green]")
+        return str(out_path)
+    except Exception as exc:
+        console.print(f"[red]A4 image prep failed:[/red] {exc}")
+        return None
 
 
 def main():
