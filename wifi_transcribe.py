@@ -70,6 +70,7 @@ runtime_flags = {
     "RUNNING": False,
     "READY": False,
     "BUTTON_STATE": "idle",
+    "BATTERY_LEVEL": None,
 }
 
 
@@ -182,6 +183,8 @@ def config_watcher():
                             runtime_flags["READY"] = bool(data["READY"])
                         if "BUTTON_STATE" in data and isinstance(data["BUTTON_STATE"], str):
                             runtime_flags["BUTTON_STATE"] = data["BUTTON_STATE"]
+                        if "BATTERY_LEVEL" in data:
+                            runtime_flags["BATTERY_LEVEL"] = data.get("BATTERY_LEVEL")
                     console.print(f"[grey]Runtime config reloaded from {RUNTIME_CONFIG_FILE}[/grey]")
         except Exception as exc:
             console.print(f"[red]Runtime config watcher error:[/red] {exc}")
@@ -247,6 +250,11 @@ def update_runtime_state(**kwargs):
     if changed:
         persist_runtime_flags()
     return changed
+
+
+def battery_level() -> int | None:
+    with runtime_lock:
+        return runtime_flags.get("BATTERY_LEVEL")
 
 
 def sanitize_audio(raw: bytes) -> bytes:
@@ -373,6 +381,20 @@ def wifi_listener():
                     update_runtime_state(BUTTON_STATE="down")
                 elif any(key in lower_text for key in ("up", "release", "stop", "end")):
                     update_runtime_state(BUTTON_STATE="up")
+            elif pkt_type == ord("B"):
+                text = payload.decode("utf-8", errors="ignore")
+                try:
+                    level = int(text)
+                    update_runtime_state(BATTERY_LEVEL=level)
+                    # Color code battery level
+                    if level <= 20:
+                        console.print(f"[red]Battery: {level}%[/red] ⚠️ Low battery!")
+                    elif level <= 50:
+                        console.print(f"[yellow]Battery: {level}%[/yellow]")
+                    else:
+                        console.print(f"[green]Battery: {level}%[/green]")
+                except ValueError:
+                    pass
             elif pkt_type == ord("A"):
                 packet_count += 1
                 total_audio_bytes += len(payload)

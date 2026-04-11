@@ -207,6 +207,7 @@ The ESP32 uses a simple framed binary protocol:
 - Header: 3 bytes `[type][length_high][length_low]`
 - Type 'A' (0x41): Audio payload (16-bit PCM)
 - Type 'C' (0x43): Control payload (UTF-8 text: "DOWN", "UP")
+- Type 'B' (0x42): Battery level (UTF-8 text: percentage, e.g., "85")
 
 ### GPU/CPU Fallback
 

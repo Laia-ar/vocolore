@@ -112,10 +112,43 @@ void updateLed(bool wifiReady, bool clientConnected, bool buttonPressed) {
 }
 
 // ======================
+// Battery monitoring for Tailbat
+// ======================
+// IP5306 I2C address is 0x75 (M5Atom default)
+#define IP5306_ADDR 0x75
+
+// Read battery level (0-100%)
+int getBatteryLevel() {
+  // Try M5.Power first (if available in your M5Atom version)
+  #ifdef M5STACK_POWER
+    return M5.Power.getBatteryLevel();
+  #else
+    // Fallback: read via I2C from IP5306
+    Wire.beginTransmission(IP5306_ADDR);
+    Wire.write(0x78);  // battery level register
+    if (Wire.endTransmission(false) != 0) return -1;
+    
+    Wire.requestFrom(IP5306_ADDR, 1);
+    if (Wire.available()) {
+      uint8_t data = Wire.read();
+      // IP5306 returns percentage in bits 0-3 (0x00-0x04 = 25%, 50%, 75%, 100%)
+      switch (data & 0x0F) {
+        case 0: return 100;
+        case 1: return 75;
+        case 2: return 50;
+        case 3: return 25;
+        default: return 0;
+      }
+    }
+    return -1;
+  #endif
+}
+
 // Simple framed protocol:
 // [type:1][len:2][payload:len]
 // type = 'C' (control, e.g. "DOWN"/"UP")
 //      = 'A' (audio, 16-bit mono PCM)
+//      = 'B' (battery level, e.g. "85" for 85%)
 // ======================
 void sendPacket(char type, const uint8_t* data, uint16_t len) {
   if (!client || !client.connected()) return;
@@ -133,6 +166,23 @@ void sendPacket(char type, const uint8_t* data, uint16_t len) {
 
 void sendButtonEvent(const char* state) {
   sendPacket('C', (const uint8_t*)state, strlen(state)); // "DOWN" or "UP"
+}
+
+void sendBatteryLevel() {
+  static unsigned long lastBatteryMs = 0;
+  unsigned long now = millis();
+  
+  // Send battery level every 30 seconds
+  if (now - lastBatteryMs < 30000) return;
+  lastBatteryMs = now;
+  
+  int level = getBatteryLevel();
+  if (level >= 0) {
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d", level);
+    sendPacket('B', (const uint8_t*)buf, strlen(buf));
+    Serial.printf("Battery: %d%%\n", level);
+  }
 }
 
 // ======================
@@ -287,6 +337,9 @@ void loop() {
 
   // Update LED according to current state
   updateLed(wifiReady, clientConnected, pressed);
+  
+  // Send periodic battery updates
+  sendBatteryLevel();
 
   delay(1);
 }
