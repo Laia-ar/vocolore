@@ -27,15 +27,15 @@ load_dotenv("config.env")
 # Configuration (override via environment variables if needed)
 HOST = os.getenv("WIFI_HOST", "192.168.4.1")
 PORT = int(os.getenv("WIFI_PORT", "5005"))
-SAMPLE_RATE = int(os.getenv("WIFI_SAMPLE_RATE", "16000"))  # actual WiFi source rate
+SAMPLE_RATE = int(os.getenv("WIFI_SAMPLE_RATE", "8000"))  # actual WiFi source rate
 TARGET_RATE = 16000  # Whisper target sample rate
-MODEL_SIZE = os.getenv("MODEL_SIZE", "base")
+MODEL_SIZE = os.getenv("MODEL_SIZE", "large-v3")
 LANGUAGE = os.getenv("TRANSCRIBE_LANGUAGE", "es")
 MIN_AUDIO_SEC = float(os.getenv("MIN_AUDIO_SEC", "4.0"))       # ignore very short clips (skip noise)
 MAX_BUFFER_SEC = float(os.getenv("MAX_BUFFER_SEC", "16.0"))    # force flush if buffer grows too long
 SAVE_WIFI_WAV = os.getenv("SAVE_WIFI_WAV", "0") == "1"         # set to 1 to persist raw audio
-DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
-COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+DEVICE = os.getenv("WHISPER_DEVICE", "cuda")
+COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "float16")
 ENABLE_FREEPIK = os.getenv("ENABLE_FREEPIK", "0") == "1"
 FREEPIK_WEBHOOK_URL = os.getenv("FREEPIK_WEBHOOK_URL", "https://www.example.com/webhook")
 PRINT_IMAGE = os.getenv("PRINT_IMAGE", "0") == "1"
@@ -67,6 +67,9 @@ runtime_flags = {
     "MAX_BUFFER_SEC": MAX_BUFFER_SEC,
     "DEBUG_TIMING": DEBUG_TIMING,
     "LAST_IMAGE": None,
+    "RUNNING": False,
+    "READY": False,
+    "BUTTON_STATE": "idle",
 }
 
 
@@ -173,6 +176,12 @@ def config_watcher():
                             runtime_flags["DEBUG_TIMING"] = bool(data["DEBUG_TIMING"])
                         if "LAST_IMAGE" in data:
                             runtime_flags["LAST_IMAGE"] = data.get("LAST_IMAGE")
+                        if "RUNNING" in data:
+                            runtime_flags["RUNNING"] = bool(data["RUNNING"])
+                        if "READY" in data:
+                            runtime_flags["READY"] = bool(data["READY"])
+                        if "BUTTON_STATE" in data and isinstance(data["BUTTON_STATE"], str):
+                            runtime_flags["BUTTON_STATE"] = data["BUTTON_STATE"]
                     console.print(f"[grey]Runtime config reloaded from {RUNTIME_CONFIG_FILE}[/grey]")
         except Exception as exc:
             console.print(f"[red]Runtime config watcher error:[/red] {exc}")
@@ -222,6 +231,22 @@ def persist_runtime_flags():
             json.dump(data, fh)
     except Exception as exc:
         console.print(f"[red]Failed to persist runtime flags:[/red] {exc}")
+
+
+def update_runtime_state(**kwargs):
+    """
+    Merge runtime status updates and persist if anything changed.
+    Keeps user-facing UI in sync even when it is not attached to stdout.
+    """
+    changed = False
+    with runtime_lock:
+        for key, value in kwargs.items():
+            if runtime_flags.get(key) != value:
+                runtime_flags[key] = value
+                changed = True
+    if changed:
+        persist_runtime_flags()
+    return changed
 
 
 def sanitize_audio(raw: bytes) -> bytes:
@@ -313,6 +338,7 @@ def wifi_listener():
     sock.settimeout(1.0)
     sock.connect((HOST, PORT))
     console.print("[green]Connected to WiFi audio source.[/green]")
+    update_runtime_state(READY=True, BUTTON_STATE="idle")
 
     wav_writer = open_wav_sink()
 
@@ -342,6 +368,11 @@ def wifi_listener():
                 upper_text = text.upper()
                 if any(key in upper_text for key in ("STOP", "END", "UP", "RELEASE")):
                     flush_buffer(reason="button event", forced=True)
+                lower_text = text.lower()
+                if "down" in lower_text or "press" in lower_text:
+                    update_runtime_state(BUTTON_STATE="down")
+                elif any(key in lower_text for key in ("up", "release", "stop", "end")):
+                    update_runtime_state(BUTTON_STATE="up")
             elif pkt_type == ord("A"):
                 packet_count += 1
                 total_audio_bytes += len(payload)
@@ -358,6 +389,7 @@ def wifi_listener():
         if wav_writer:
             wav_writer.close()
         sock.close()
+        update_runtime_state(READY=False, BUTTON_STATE="idle")
         console.print("[yellow]WiFi listener stopped.[/yellow]")
 
 
@@ -521,13 +553,42 @@ def make_a4_image_copy(image_path: str, task_id: str = ""):
         return None
 
 
+def resolve_compute_type(device: str, compute_type: str) -> str:
+    """
+    The pure int8 path is CPU-only; for CUDA use int8_float16 to keep quantization
+    benefits without tripping unsupported kernels.
+    """
+    if device.lower() == "cuda" and compute_type.lower() == "int8":
+        console.print("[yellow]WHISPER_COMPUTE_TYPE=int8 is CPU-only; using int8_float16 for CUDA.[/yellow]")
+        return "int8_float16"
+    return compute_type
+
+
+def load_whisper_model() -> WhisperModel:
+    """
+    Try CUDA first, but fall back to CPU so the service still runs if the GPU setup
+    is missing the right runtime or drivers.
+    """
+    attempts = [(DEVICE, resolve_compute_type(DEVICE, COMPUTE_TYPE))]
+    if DEVICE.lower() == "cuda":
+        attempts.append(("cpu", "int8"))
+
+    last_error = None
+    for device, compute_type in attempts:
+        console.print(f"[bold blue]Loading Whisper model: {MODEL_SIZE} ({device}, {compute_type})[/bold blue]")
+        try:
+            return WhisperModel(MODEL_SIZE, device=device, compute_type=compute_type)
+        except Exception as exc:
+            last_error = exc
+            console.print(f"[red]Failed to load Whisper model on {device}/{compute_type}:[/red] {exc}")
+            if device.lower() == "cuda":
+                console.print("[yellow]CUDA failed; will retry on CPU unless WHISPER_DEVICE is overridden.[/yellow]")
+
+    raise SystemExit(f"Could not load Whisper model: {last_error}")
+
+
 def main():
-    console.print(f"[bold blue]Loading Whisper model: {MODEL_SIZE} ({DEVICE}, {COMPUTE_TYPE})[/bold blue]")
-    try:
-        model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-    except Exception as e:
-        console.print(f"[red]Failed to load Whisper model: {e}[/red]")
-        raise SystemExit(1)
+    model = load_whisper_model()
 
     transcriber = threading.Thread(target=transcribe_worker, args=(model,), daemon=True)
     flusher = threading.Thread(target=flush_loop, daemon=True)
@@ -535,6 +596,7 @@ def main():
     transcriber.start()
     flusher.start()
     cfg_thread.start()
+    update_runtime_state(RUNNING=True, READY=False, BUTTON_STATE="idle")
 
     try:
         wifi_listener()
@@ -553,6 +615,7 @@ def main():
             console.print("[grey]Model released and GC run.[/grey]")
         except Exception:
             pass
+        update_runtime_state(RUNNING=False, READY=False, BUTTON_STATE="idle")
         console.print("[green]Done.[/green]")
 
 

@@ -11,6 +11,10 @@ __pycache__/
 clips/
 images/
 
+# Secrets & local config
+config.env
+.runtime_config*.json
+
 # Editor/OS
 .DS_Store
 Thumbs.db
@@ -26,4 +30,10 @@ venv/
 .pio/
 *.bin
 *.elf
+
+# Debug/test scripts
+test.py
+
+# Binary packages
+*.deb
 

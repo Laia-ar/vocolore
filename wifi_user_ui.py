@@ -211,7 +211,15 @@ class UserUI:
                     freepik = bool(data.get("ENABLE_FREEPIK", self.freepik_enabled))
                     open_img = bool(data.get("OPEN_IMAGE", self.open_enabled))
                     print_img = bool(data.get("PRINT_IMAGE", self.print_enabled))
-                    running = bool(data.get("RUNNING", self.running_flag))
+                    running_raw = data.get("RUNNING", self.running_flag)
+                    running = bool(running_raw)
+                    if isinstance(running_raw, str):
+                        running = running_raw.lower() in ("1", "true", "yes", "on", "running")
+                    ready_raw = data.get("READY", False)
+                    ready_flag = bool(ready_raw)
+                    if isinstance(ready_raw, str):
+                        ready_flag = ready_raw.lower() in ("1", "true", "yes", "ready")
+                    btn_state = str(data.get("BUTTON_STATE", "")).lower()
                     last_image = data.get("LAST_IMAGE", self.last_image_path)
                     changed = (freepik != self.freepik_enabled) or (open_img != self.open_enabled) or (print_img != self.print_enabled)
                     self.freepik_enabled = freepik
@@ -228,10 +236,18 @@ class UserUI:
                             self.lbl_open.set_state("Open img: off", "#cccccc")
                             self.lbl_print.set_state("Print img: off", "#cccccc")
                     # Ready flag from debug start/stop
-                    if self.running_flag:
+                    if ready_flag:
+                        self.lbl_ready.set_state("Ready: yes", "#5cb85c")
+                    elif self.running_flag:
                         self.lbl_ready.set_state("Ready: waiting", "#f0ad4e")
                     else:
                         self.lbl_ready.set_state("Ready: no", "#f0ad4e")
+                    if btn_state == "down":
+                        self.lbl_btn.set_state("Button: DOWN", "#ffcc66")
+                    elif btn_state == "up":
+                        self.lbl_btn.set_state("Button: UP", "#cccccc")
+                    elif btn_state == "idle":
+                        self.lbl_btn.set_state("Button: idle", "#cccccc")
                     # Update image preview if path changed
                     if last_image and last_image != self.last_image_path:
                         self.last_image_path = last_image

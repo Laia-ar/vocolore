@@ -90,14 +90,19 @@ class DebugUI:
         return {}
 
     def _write_runtime_config(self):
-        cfg = {
-            "ENABLE_FREEPIK": self.var_freepik.get(),
-            "OPEN_IMAGE": self.var_open.get() and self.var_freepik.get(),
-            "PRINT_IMAGE": self.var_print.get() and self.var_freepik.get(),
-            "PRINT_TO_PDF": self.var_pdf.get() and self.var_freepik.get(),
-            "DEBUG_TIMING": self.var_debug.get(),
-            "RUNNING": self.running,
-        }
+        cfg = self._load_runtime_config()
+        if not isinstance(cfg, dict):
+            cfg = {}
+        cfg.update(
+            {
+                "ENABLE_FREEPIK": self.var_freepik.get(),
+                "OPEN_IMAGE": self.var_open.get() and self.var_freepik.get(),
+                "PRINT_IMAGE": self.var_print.get() and self.var_freepik.get(),
+                "PRINT_TO_PDF": self.var_pdf.get() and self.var_freepik.get(),
+                "DEBUG_TIMING": self.var_debug.get(),
+                "RUNNING": self.running,
+            }
+        )
         try:
             cfg["MIN_AUDIO_SEC"] = float(self.entry_min.get())
         except ValueError:
