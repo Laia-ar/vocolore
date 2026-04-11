@@ -31,7 +31,7 @@ The project bridges embedded hardware (ESP32), AI speech recognition, and genera
 ├── config.env                  # Environment configuration (gitignored)
 ├── sample.config.env           # Sample configuration template
 ├── .runtime_config.json        # Runtime toggles (created dynamically)
-├── requirements.txt            # Python dependencies
+├── pyproject.toml              # Project configuration (uv)
 ├── clips/                      # Saved audio clips (gitignored)
 └── images/                     # Generated images (gitignored)
 ```
@@ -139,16 +139,16 @@ This file is created dynamically and watched by `wifi_transcribe.py`. It allows 
 
 ## Build and Run Commands
 
-### Installation
+### Installation (using uv)
+
+**Prerequisite:** Install uv: https://docs.astral.sh/uv/getting-started/installation/
 
 ```bash
-# Create virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or: venv\Scripts\activate  # Windows
+# Create virtual environment and install dependencies
+uv sync
 
-# Install dependencies
-pip install -r requirements.txt
+# Or if you want to run directly without activating:
+uv run python wifi_transcribe.py
 ```
 
 ### Running the Application
@@ -246,7 +246,7 @@ For manual testing:
 
 ## Dependencies
 
-See `requirements.txt`:
+Dependencies are defined in `pyproject.toml`:
 - faster-whisper
 - sounddevice
 - numpy
@@ -256,3 +256,5 @@ See `requirements.txt`:
 - python-dotenv
 - requests
 - Pillow
+
+Install with: `uv sync`

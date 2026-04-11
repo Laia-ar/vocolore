@@ -1,0 +1,27 @@
+[project]
+name = "vocolore"
+version = "0.1.0"
+description = "Voice-to-coloring-page system for children"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "faster-whisper",
+    "sounddevice",
+    "numpy",
+    "rich",
+    "pynput",
+    "soundfile",
+    "python-dotenv",
+    "requests",
+    "Pillow",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+]

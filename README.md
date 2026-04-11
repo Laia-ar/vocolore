@@ -17,10 +17,9 @@ To set up and run this project, follow these steps:
    cd vocolore
    ```
 
-2. **Install dependencies**:
-   It is recommended to use a virtual environment.
+2. **Install dependencies** (using [uv](https://docs.astral.sh/uv/)):
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
 ## Usage
@@ -48,20 +47,21 @@ To set up and run this project, follow these steps:
 
 ## Requirements
 
-- Python 3.x
-- `requirements.txt` dependencies (e.g., `sounddevice`, `whisper`, `numpy`, `queue`)
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) for dependency management
+- Dependencies: `faster-whisper`, `sounddevice`, `numpy`, `rich`, `pynput`, `soundfile`, `python-dotenv`, `requests`, `Pillow`
 
 ## Freepik API Key
 
 Some functionalities of this project may require a Freepik API key. To use these features, you need to set up your API key as an environment variable.
 
-1.  **Create a `.env` file**:
-    Copy the `sample.config.env` file to `.env` in the root directory of the project:
+1.  **Create a `config.env` file**:
+    Copy the `sample.config.env` file to `config.env` in the root directory of the project:
     ```bash
-    cp sample.config.env .env
+    cp sample.config.env config.env
     ```
 2.  **Add your API key**:
-    Open the newly created `.env` file and add your Freepik API key:
+    Open the newly created `config.env` file and add your Freepik API key:
     ```
     FREEPIK_API_KEY=your_freepik_api_key_here
     ```
