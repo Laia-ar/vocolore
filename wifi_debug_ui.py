@@ -48,6 +48,7 @@ class DebugUI:
         self.var_print = tk.BooleanVar(value=cfg.get("PRINT_IMAGE", False))
         self.var_pdf = tk.BooleanVar(value=cfg.get("PRINT_TO_PDF", False))
         self.var_debug = tk.BooleanVar(value=cfg.get("DEBUG_TIMING", False))
+        self.page_size_var = tk.StringVar(value=cfg.get("PRINT_PAGE_SIZE", "A4"))
         self.chk_freepik = tk.Checkbutton(opt_frame, text="Freepik", variable=self.var_freepik, command=self.apply_config)
         self.chk_freepik.pack(side="left", padx=4)
         self.chk_open = tk.Checkbutton(opt_frame, text="Open image", variable=self.var_open, command=self.apply_config)
@@ -57,6 +58,10 @@ class DebugUI:
         self.chk_pdf = tk.Checkbutton(opt_frame, text="PDF copy", variable=self.var_pdf, command=self.apply_config)
         self.chk_pdf.pack(side="left", padx=4)
         tk.Checkbutton(opt_frame, text="Debug timing", variable=self.var_debug, command=self.apply_config).pack(side="left", padx=4)
+        # Page size selector
+        tk.Label(opt_frame, text="Page:").pack(side="left", padx=(12, 4))
+        self.page_size_combo = tk.OptionMenu(opt_frame, self.page_size_var, "A4", "A5", command=lambda _: self.apply_config())
+        self.page_size_combo.pack(side="left", padx=4)
 
         num_frame = tk.Frame(root)
         num_frame.pack(fill="x", padx=8, pady=4)
@@ -100,6 +105,7 @@ class DebugUI:
                 "PRINT_IMAGE": self.var_print.get() and self.var_freepik.get(),
                 "PRINT_TO_PDF": self.var_pdf.get() and self.var_freepik.get(),
                 "DEBUG_TIMING": self.var_debug.get(),
+                "PRINT_PAGE_SIZE": self.page_size_var.get(),
                 "RUNNING": self.running,
             }
         )
@@ -149,6 +155,7 @@ class DebugUI:
         env["PRINT_IMAGE"] = "1" if self.var_print.get() else "0"
         env["PRINT_TO_PDF"] = "1" if self.var_pdf.get() else "0"
         env["DEBUG_TIMING"] = "1" if self.var_debug.get() else "0"
+        env["PRINT_PAGE_SIZE"] = self.page_size_var.get()
         env["MIN_AUDIO_SEC"] = str(self.entry_min.get())
         env["MAX_BUFFER_SEC"] = str(self.entry_max.get())
         env["RUNTIME_CONFIG_FILE"] = self.runtime_config

@@ -120,6 +120,7 @@ Copy `sample.config.env` to `config.env` and configure:
 | `OPEN_IMAGE` | 0 | Auto-open generated image (0/1) |
 | `SAVE_CLIP_WAV` | 0 | Save individual audio clips (0/1) |
 | `CLIP_WAV_DIR` | clips | Directory for saved clips |
+| `PRINT_PAGE_SIZE` | A4 | Page size for PDF/print (A4 or A5) |
 
 ### Runtime Configuration (.runtime_config.json)
 

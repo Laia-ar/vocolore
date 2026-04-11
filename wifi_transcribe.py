@@ -490,7 +490,7 @@ def send_image_generation_request(prompt: str):
         if print_enabled():
             target_path = pdf_path
             if target_path is None:
-                target_path = make_a4_image_copy(filename, task_id)
+                target_path = make_print_image_copy(filename, task_id)
             try:
                 subprocess.run([PRINT_COMMAND, target_path or filename], check=True)
                 console.print(f"[green]Sent image to printer via {PRINT_COMMAND}: {target_path or filename}[/green]")
@@ -507,6 +507,14 @@ def send_image_generation_request(prompt: str):
         console.print(f"[red]Unexpected Freepik error:[/red] {exc}")
 
 
+def get_page_dimensions(page_size: str) -> tuple[int, int]:
+    """Return page dimensions in pixels at 300 DPI for A4 or A5."""
+    size = page_size.upper()
+    if size == "A5":
+        return 1748, 2480  # 148x210 mm at 300 DPI
+    return 2480, 3508  # A4 default: 210x297 mm at 300 DPI
+
+
 def save_pdf_copy(image_path: str):
     """Optionally write a PDF copy of the generated image."""
     if not pdf_enabled():
@@ -514,17 +522,18 @@ def save_pdf_copy(image_path: str):
     if Image is None:
         console.print("[yellow]PRINT_TO_PDF is enabled but Pillow is not installed; skipping PDF export.[/yellow]")
         return None
+    page_size = os.getenv("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
+    page_w, page_h = get_page_dimensions(page_size)
     try:
         os.makedirs(PRINT_PDF_DIR, exist_ok=True)
         pdf_path = Path(PRINT_PDF_DIR) / (Path(image_path).stem + ".pdf")
         with Image.open(image_path) as img:
             if img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
-            # Create an A4 canvas at 300 DPI and center-fit the image
-            a4_w, a4_h = 2480, 3508  # pixels for 210x297 mm at 300 DPI
+            # Create canvas at 300 DPI and center-fit the image
             margin = 120  # ~10 mm margin
-            canvas = Image.new("RGB", (a4_w, a4_h), "white")
-            max_w, max_h = a4_w - 2 * margin, a4_h - 2 * margin
+            canvas = Image.new("RGB", (page_w, page_h), "white")
+            max_w, max_h = page_w - 2 * margin, page_h - 2 * margin
             # Prefer filling the width (with aspect ratio) unless it exceeds page height
             target_w = max_w
             target_h = int(img.height * (target_w / img.width))
@@ -532,21 +541,23 @@ def save_pdf_copy(image_path: str):
                 target_h = max_h
                 target_w = int(img.width * (target_h / img.height))
             resized = img.resize((target_w, target_h))
-            x = (a4_w - target_w) // 2
-            y = (a4_h - target_h) // 2
+            x = (page_w - target_w) // 2
+            y = (page_h - target_h) // 2
             canvas.paste(resized, (x, y))
             canvas.save(pdf_path, "PDF", resolution=300.0)
-        console.print(f"[green]Saved PDF copy to {pdf_path}[/green]")
+        console.print(f"[green]Saved PDF copy to {pdf_path} ({page_size})[/green]")
         return str(pdf_path)
     except Exception as exc:
         console.print(f"[red]PDF export failed:[/red] {exc}")
         return None
 
 
-def make_a4_image_copy(image_path: str, task_id: str = ""):
-    """Build a print-friendly A4-sized PNG with the image scaled to fill width."""
+def make_print_image_copy(image_path: str, task_id: str = ""):
+    """Build a print-friendly PNG with the image scaled to fill width (A4 or A5)."""
     if Image is None:
         return None
+    page_size = os.getenv("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
+    page_w, page_h = get_page_dimensions(page_size)
     try:
         os.makedirs(PRINT_PDF_DIR, exist_ok=True)
         out_name = f"print_image_{task_id or Path(image_path).stem}.png"
@@ -554,24 +565,23 @@ def make_a4_image_copy(image_path: str, task_id: str = ""):
         with Image.open(image_path) as img:
             if img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
-            a4_w, a4_h = 2480, 3508
             margin = 120
-            max_w, max_h = a4_w - 2 * margin, a4_h - 2 * margin
+            max_w, max_h = page_w - 2 * margin, page_h - 2 * margin
             target_w = max_w
             target_h = int(img.height * (target_w / img.width))
             if target_h > max_h:
                 target_h = max_h
                 target_w = int(img.width * (target_h / img.height))
             resized = img.resize((target_w, target_h))
-            canvas = Image.new("RGB", (a4_w, a4_h), "white")
-            x = (a4_w - target_w) // 2
-            y = (a4_h - target_h) // 2
+            canvas = Image.new("RGB", (page_w, page_h), "white")
+            x = (page_w - target_w) // 2
+            y = (page_h - target_h) // 2
             canvas.paste(resized, (x, y))
             canvas.save(out_path, "PNG")
-        console.print(f"[green]Prepared A4 print image at {out_path}[/green]")
+        console.print(f"[green]Prepared {page_size} print image at {out_path}[/green]")
         return str(out_path)
     except Exception as exc:
-        console.print(f"[red]A4 image prep failed:[/red] {exc}")
+        console.print(f"[red]Print image prep failed:[/red] {exc}")
         return None
 
 
