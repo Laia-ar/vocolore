@@ -49,6 +49,15 @@ OPEN_IMAGE = os.getenv("OPEN_IMAGE", "0") == "1"
 RUNTIME_CONFIG_FILE = os.getenv("RUNTIME_CONFIG_FILE", ".runtime_config.json")
 PRE_ROLL_SEC = float(os.getenv("PRE_ROLL_SEC", "0.3"))  # prepend this much from previous clip
 
+def get_config(key: str, default=None, env_var: str = None):
+    """Get config value from runtime_flags (UI) first, then env var, then default."""
+    with runtime_lock:
+        if key in runtime_flags and runtime_flags[key] is not None:
+            return runtime_flags[key]
+    env_key = env_var or key
+    return os.getenv(env_key, default)
+
+
 # Image generation provider selection
 IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "freepik")  # "freepik" or "gemini"
 FREEPIK_MODEL = os.getenv("FREEPIK_MODEL", "gemini-2-5-flash-image-preview")  # Freepik model
@@ -79,6 +88,11 @@ runtime_flags = {
     "READY": False,
     "BUTTON_STATE": "idle",
     "BATTERY_LEVEL": None,
+    # Image generation settings (can be overridden by UI)
+    "IMAGE_PROVIDER": IMAGE_PROVIDER,
+    "FREEPIK_MODEL": FREEPIK_MODEL,
+    "GEMINI_MODEL": GEMINI_MODEL,
+    "PRINT_PAGE_SIZE": PRINT_PAGE_SIZE,
 }
 
 
@@ -193,6 +207,10 @@ def config_watcher():
                             runtime_flags["BUTTON_STATE"] = data["BUTTON_STATE"]
                         if "BATTERY_LEVEL" in data:
                             runtime_flags["BATTERY_LEVEL"] = data.get("BATTERY_LEVEL")
+                        # Image generation settings from UI
+                        for key in ("IMAGE_PROVIDER", "FREEPIK_MODEL", "GEMINI_MODEL", "PRINT_PAGE_SIZE"):
+                            if key in data:
+                                runtime_flags[key] = data[key]
                     console.print(f"[grey]Runtime config reloaded from {RUNTIME_CONFIG_FILE}[/grey]")
         except Exception as exc:
             console.print(f"[red]Runtime config watcher error:[/red] {exc}")
@@ -518,7 +536,7 @@ def build_freepik_payload(model_name: str, prompt: str) -> dict:
     base_prompt = f"coloring book style image of {prompt}"
     
     # Get aspect ratio from page size setting
-    page_size = os.getenv("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
+    page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
     # Map page sizes to aspect ratios
     page_to_ratio = {
         "A4": "traditional_3_4",    # 210x297mm (portrait)
@@ -575,7 +593,7 @@ def send_gemini_image_request(prompt: str, model_name: str = "gemini-2.5-flash-i
     model_id = config["model_id"]
     
     # Map page size to aspect ratio
-    page_size = os.getenv("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
+    page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
     page_to_ratio = {
         "A4": "3:4",    # Portrait
         "A5": "3:4",    # Portrait
@@ -664,10 +682,10 @@ def send_gemini_image_request(prompt: str, model_name: str = "gemini-2.5-flash-i
 
 def send_image_generation_request(prompt: str):
     """Call image generation API based on the transcript and provider settings."""
-    provider = os.getenv("IMAGE_PROVIDER", IMAGE_PROVIDER).lower()
+    provider = get_config("IMAGE_PROVIDER", IMAGE_PROVIDER).lower()
     
     if provider == "gemini":
-        model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-image")
+        model_name = get_config("GEMINI_MODEL", GEMINI_MODEL)
         send_gemini_image_request(prompt, model_name)
         return
     
@@ -677,7 +695,7 @@ def send_image_generation_request(prompt: str):
         console.print("[red]FREEPIK_API_KEY not set; skipping image generation.[/red]")
         return
     
-    model_name = os.getenv("FREEPIK_MODEL", FREEPIK_MODEL)
+    model_name = get_config("FREEPIK_MODEL", FREEPIK_MODEL)
     config = get_freepik_model_config(model_name)
     
     base_url = "https://api.freepik.com"
@@ -773,8 +791,10 @@ def send_image_generation_request(prompt: str):
         console.print(f"[red]Unexpected Freepik error:[/red] {exc}")
 
 
-def get_page_dimensions(page_size: str) -> tuple[int, int]:
+def get_page_dimensions(page_size: str = None) -> tuple[int, int]:
     """Return page dimensions in pixels at 300 DPI for A4 or A5."""
+    if page_size is None:
+        page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
     size = page_size.upper()
     if size == "A5":
         return 1748, 2480  # 148x210 mm at 300 DPI
@@ -788,7 +808,7 @@ def save_pdf_copy(image_path: str):
     if Image is None:
         console.print("[yellow]PRINT_TO_PDF is enabled but Pillow is not installed; skipping PDF export.[/yellow]")
         return None
-    page_size = os.getenv("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
+    page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
     page_w, page_h = get_page_dimensions(page_size)
     try:
         os.makedirs(PRINT_PDF_DIR, exist_ok=True)
@@ -822,7 +842,7 @@ def make_print_image_copy(image_path: str, task_id: str = ""):
     """Build a print-friendly PNG with the image scaled to fill width (A4 or A5)."""
     if Image is None:
         return None
-    page_size = os.getenv("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
+    page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
     page_w, page_h = get_page_dimensions(page_size)
     try:
         os.makedirs(PRINT_PDF_DIR, exist_ok=True)
