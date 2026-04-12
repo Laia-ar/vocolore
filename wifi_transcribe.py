@@ -625,7 +625,11 @@ def send_gemini_image_request(prompt: str, model_name: str = "gemini-2.5-flash-i
     
     try:
         console.print(f"[blue]Requesting Gemini image ({model_name}) for: {prompt}[/blue]")
+        console.print(f"[grey]URL: {url[:80]}...[/grey]")
+        console.print(f"[grey]Payload: {json.dumps(payload, indent=2)}[/grey]")
         resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        if resp.status_code != 200:
+            console.print(f"[red]Gemini API error {resp.status_code}: {resp.text}[/red]")
         resp.raise_for_status()
         data = resp.json()
         
