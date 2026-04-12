@@ -51,8 +51,11 @@ PRE_ROLL_SEC = float(os.getenv("PRE_ROLL_SEC", "0.3"))  # prepend this much from
 
 # Image generation provider selection
 IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "freepik")  # "freepik" or "gemini"
+FREEPIK_MODEL = os.getenv("FREEPIK_MODEL", "gemini-2-5-flash-image-preview")  # Freepik model
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-image")  # Gemini model
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")  # For Google Gemini API
 FREEPIK_API_KEY = os.getenv("FREEPIK_API_KEY", "")  # For Freepik API
+PRINT_PAGE_SIZE = os.getenv("PRINT_PAGE_SIZE", "A4")  # A4 or A5
 
 console = Console()
 stop_event = threading.Event()
