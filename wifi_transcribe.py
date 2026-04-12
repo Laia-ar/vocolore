@@ -415,53 +415,177 @@ def wifi_listener():
         console.print("[yellow]WiFi listener stopped.[/yellow]")
 
 
+# Freepik Model configurations
+FREEPIK_MODELS = {
+    "gemini-2-5-flash-image-preview": {
+        "endpoint": "/v1/ai/gemini-2-5-flash-image-preview",
+        "supports_aspect_ratio": False,
+        "description": "Gemini 2.5 Flash (undocumented but works)",
+    },
+    "mystic": {
+        "endpoint": "/v1/ai/mystic",
+        "supports_aspect_ratio": False,
+        "supports_resolution": True,
+        "resolutions": ["1k", "2k", "4k"],
+        "description": "Freepik Mystic - Ultra-realistic, LoRA support",
+    },
+    "flux-kontext-pro": {
+        "endpoint": "/v1/ai/text-to-image/flux-kontext-pro",
+        "supports_aspect_ratio": True,
+        "aspect_ratios": ["square_1_1", "classic_4_3", "traditional_3_4", "widescreen_16_9", "social_story_9_16", "standard_3_2"],
+        "description": "Flux Kontext Pro - Context-aware generation",
+    },
+    "flux-2-pro": {
+        "endpoint": "/v1/ai/text-to-image/flux-2-pro",
+        "supports_aspect_ratio": True,
+        "supports_resolution": True,
+        "description": "Flux 2 Pro - Professional-grade",
+    },
+    "flux-2-turbo": {
+        "endpoint": "/v1/ai/text-to-image/flux-2-turbo",
+        "supports_aspect_ratio": True,
+        "description": "Flux 2 Turbo - Fast and cost-effective",
+    },
+    "flux-2-klein": {
+        "endpoint": "/v1/ai/text-to-image/flux-2-klein",
+        "supports_aspect_ratio": True,
+        "supports_resolution": True,
+        "resolutions": ["1k", "2k"],
+        "description": "Flux 2 Klein - Sub-second generation",
+    },
+    "seedream-v4-5": {
+        "endpoint": "/v1/ai/text-to-image/seedream-v4-5",
+        "supports_aspect_ratio": False,
+        "description": "Seedream 4.5 - Great for text/posters",
+    },
+    "seedream-v4": {
+        "endpoint": "/v1/ai/text-to-image/seedream-v4",
+        "supports_aspect_ratio": False,
+        "description": "Seedream 4 - Next-gen text-to-image",
+    },
+    "z-image": {
+        "endpoint": "/v1/ai/text-to-image/z-image",
+        "supports_aspect_ratio": False,
+        "description": "Z-Image - Fast, LoRA + ControlNet",
+    },
+}
+
+
+def get_freepik_model_config(model_name: str) -> dict:
+    """Get configuration for a Freepik model."""
+    return FREEPIK_MODELS.get(model_name, FREEPIK_MODELS["gemini-2-5-flash-image-preview"])
+
+
+def build_freepik_payload(model_name: str, prompt: str) -> dict:
+    """Build the appropriate payload for the selected model."""
+    config = get_freepik_model_config(model_name)
+    base_prompt = f"coloring book style image of {prompt}"
+    
+    # Get aspect ratio from page size setting
+    page_size = os.getenv("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
+    # Map page sizes to aspect ratios
+    page_to_ratio = {
+        "A4": "traditional_3_4",    # 210x297mm (portrait)
+        "A5": "traditional_3_4",    # 148x210mm (portrait)
+    }
+    
+    # Default payload structure
+    payload = {"prompt": base_prompt}
+    
+    if model_name == "gemini-2-5-flash-image-preview":
+        payload["reference_images"] = []
+        payload["webhook_url"] = FREEPIK_WEBHOOK_URL
+    
+    elif model_name == "mystic":
+        resolution = os.getenv("FREEPIK_RESOLUTION", "2k")
+        payload.update({
+            "resolution": resolution,
+            "num_images": 1,
+            "styling": {"style": "digital_art"},
+        })
+        if FREEPIK_WEBHOOK_URL:
+            payload["webhook_url"] = FREEPIK_WEBHOOK_URL
+    
+    elif model_name in ["flux-kontext-pro", "flux-2-pro", "flux-2-turbo", "flux-2-klein"]:
+        aspect_ratio = page_to_ratio.get(page_size, "traditional_3_4")
+        if config.get("supports_aspect_ratio"):
+            payload["aspect_ratio"] = aspect_ratio
+        if config.get("supports_resolution"):
+            resolution = os.getenv("FREEPIK_RESOLUTION", "2k")
+            payload["resolution"] = resolution
+        if FREEPIK_WEBHOOK_URL:
+            payload["webhook_url"] = FREEPIK_WEBHOOK_URL
+    
+    elif model_name.startswith("seedream"):
+        if FREEPIK_WEBHOOK_URL:
+            payload["webhook_url"] = FREEPIK_WEBHOOK_URL
+    
+    else:
+        # Generic fallback
+        if FREEPIK_WEBHOOK_URL:
+            payload["webhook_url"] = FREEPIK_WEBHOOK_URL
+    
+    return payload
+
+
 def send_image_generation_request(prompt: str):
     """Call Freepik image generation API based on the transcript."""
     api_key = os.getenv("FREEPIK_API_KEY")
     if not api_key:
         console.print("[red]FREEPIK_API_KEY not set; skipping image generation.[/red]")
         return
-
-    url = "https://api.freepik.com/v1/ai/gemini-2-5-flash-image-preview"
-    payload = {
-        "prompt": f"coloring book style image of {prompt}",
-        "reference_images": [],
-        "webhook_url": FREEPIK_WEBHOOK_URL,
-    }
+    
+    model_name = os.getenv("FREEPIK_MODEL", FREEPIK_MODEL)
+    config = get_freepik_model_config(model_name)
+    
+    base_url = "https://api.freepik.com"
+    url = f"{base_url}{config['endpoint']}"
+    
+    payload = build_freepik_payload(model_name, prompt)
     headers = {
         "Content-Type": "application/json",
         "x-freepik-api-key": api_key,
     }
 
     try:
-        console.print(f"[blue]Requesting Freepik image for: {prompt}[/blue]")
+        console.print(f"[blue]Requesting Freepik image ({model_name}) for: {prompt}[/blue]")
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        task_id = data.get("data", {}).get("task_id")
+        
+        # Try different locations for task_id depending on model
+        task_id = data.get("data", {}).get("task_id") or data.get("task_id") or data.get("id")
         if not task_id:
             console.print("[red]No task_id returned from Freepik; aborting image generation.[/red]")
             return
 
         console.print(f"[green]Freepik task id: {task_id}. Polling for completion...[/green]")
-        poll_deadline = time.time() + 60
+        poll_deadline = time.time() + 120  # 2 minute timeout
         image_url = None
         while time.time() < poll_deadline:
             poll_resp = requests.get(f"{url}/{task_id}", headers=headers, timeout=15)
             poll_resp.raise_for_status()
             poll_data = poll_resp.json()
-            status = poll_data.get("data", {}).get("status")
+            
+            # Handle different status field locations
+            status = poll_data.get("data", {}).get("status") or poll_data.get("status")
             console.print(f"[cyan]Freepik status: {status}[/cyan]")
-            if status in ("COMPLETED", "READY"):
+            
+            if status in ("COMPLETED", "READY", "completed", "ready"):
+                # Try different locations for generated image URL
                 generated = poll_data.get("data", {}).get("generated") or []
                 if generated:
                     image_url = generated[0]
+                elif poll_data.get("data", {}).get("result", {}).get("url"):
+                    image_url = poll_data["data"]["result"]["url"]
+                elif poll_data.get("data", {}).get("image", {}).get("url"):
+                    image_url = poll_data["data"]["image"]["url"]
                 elif "url" in poll_data:
                     image_url = poll_data["url"]
                 elif "image_url" in poll_data:
                     image_url = poll_data["image_url"]
                 break
-            if status == "FAILED":
+            if status in ("FAILED", "failed"):
                 console.print("[red]Freepik generation failed.[/red]")
                 return
             time.sleep(5)

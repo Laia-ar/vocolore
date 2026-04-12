@@ -121,6 +121,21 @@ Copy `sample.config.env` to `config.env` and configure:
 | `SAVE_CLIP_WAV` | 0 | Save individual audio clips (0/1) |
 | `CLIP_WAV_DIR` | clips | Directory for saved clips |
 | `PRINT_PAGE_SIZE` | A4 | Page size for PDF/print (A4 or A5) |
+| `FREEPIK_MODEL` | gemini-2-5-flash-image-preview | Image generation model (see table below) |
+
+**Available Freepik Models:**
+
+| Model | Endpoint | Description | Aspect Ratio Support |
+|-------|----------|-------------|---------------------|
+| `gemini-2-5-flash-image-preview` | `/v1/ai/gemini-2-5-flash-image-preview` | Gemini Flash (undocumented but works) | No |
+| `mystic` | `/v1/ai/mystic` | Freepik exclusive, ultra-realistic, LoRA | No |
+| `flux-kontext-pro` | `/v1/ai/text-to-image/flux-kontext-pro` | Context-aware, image input support | Yes (6 ratios) |
+| `flux-2-pro` | `/v1/ai/text-to-image/flux-2-pro` | Professional-grade, up to 4 input images | Yes |
+| `flux-2-turbo` | `/v1/ai/text-to-image/flux-2-turbo` | Fast and cost-effective | Yes |
+| `flux-2-klein` | `/v1/ai/text-to-image/flux-2-klein` | Sub-second generation | Yes |
+| `seedream-v4-5` | `/v1/ai/text-to-image/seedream-v4-5` | Great for text/posters, up to 4MP | No |
+| `seedream-v4` | `/v1/ai/text-to-image/seedream-v4` | Next-gen text-to-image | No |
+| `z-image` | `/v1/ai/text-to-image/z-image` | Fast, LoRA + ControlNet | No |
 
 ### Runtime Configuration (.runtime_config.json)
 

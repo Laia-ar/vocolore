@@ -49,6 +49,7 @@ class DebugUI:
         self.var_pdf = tk.BooleanVar(value=cfg.get("PRINT_TO_PDF", False))
         self.var_debug = tk.BooleanVar(value=cfg.get("DEBUG_TIMING", False))
         self.page_size_var = tk.StringVar(value=cfg.get("PRINT_PAGE_SIZE", "A4"))
+        self.model_var = tk.StringVar(value=cfg.get("FREEPIK_MODEL", "gemini-2-5-flash-image-preview"))
         self.chk_freepik = tk.Checkbutton(opt_frame, text="Freepik", variable=self.var_freepik, command=self.apply_config)
         self.chk_freepik.pack(side="left", padx=4)
         self.chk_open = tk.Checkbutton(opt_frame, text="Open image", variable=self.var_open, command=self.apply_config)
@@ -62,6 +63,21 @@ class DebugUI:
         tk.Label(opt_frame, text="Page:").pack(side="left", padx=(12, 4))
         self.page_size_combo = tk.OptionMenu(opt_frame, self.page_size_var, "A4", "A5", command=lambda _: self.apply_config())
         self.page_size_combo.pack(side="left", padx=4)
+        # Model selector
+        tk.Label(opt_frame, text="Model:").pack(side="left", padx=(12, 4))
+        model_options = [
+            "gemini-2-5-flash-image-preview",
+            "mystic",
+            "flux-kontext-pro",
+            "flux-2-pro",
+            "flux-2-turbo",
+            "flux-2-klein",
+            "seedream-v4-5",
+            "seedream-v4",
+            "z-image",
+        ]
+        self.model_combo = tk.OptionMenu(opt_frame, self.model_var, *model_options, command=lambda _: self.apply_config())
+        self.model_combo.pack(side="left", padx=4)
 
         num_frame = tk.Frame(root)
         num_frame.pack(fill="x", padx=8, pady=4)
@@ -106,6 +122,7 @@ class DebugUI:
                 "PRINT_TO_PDF": self.var_pdf.get() and self.var_freepik.get(),
                 "DEBUG_TIMING": self.var_debug.get(),
                 "PRINT_PAGE_SIZE": self.page_size_var.get(),
+                "FREEPIK_MODEL": self.model_var.get(),
                 "RUNNING": self.running,
             }
         )
@@ -156,6 +173,7 @@ class DebugUI:
         env["PRINT_TO_PDF"] = "1" if self.var_pdf.get() else "0"
         env["DEBUG_TIMING"] = "1" if self.var_debug.get() else "0"
         env["PRINT_PAGE_SIZE"] = self.page_size_var.get()
+        env["FREEPIK_MODEL"] = self.model_var.get()
         env["MIN_AUDIO_SEC"] = str(self.entry_min.get())
         env["MAX_BUFFER_SEC"] = str(self.entry_max.get())
         env["RUNTIME_CONFIG_FILE"] = self.runtime_config
