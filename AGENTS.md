@@ -141,16 +141,26 @@ Copy `sample.config.env` to `config.env` and configure:
 
 **Available Gemini Models (Google API):**
 
-| Model | Description |
-|-------|-------------|
-| `gemini-2.0-flash-preview` | Fast image generation (recommended) |
-| `gemini-1.5-flash` | Standard image generation |
-| `gemini-nano-banana` | Alias for 2.0-flash-preview |
-| `gemini-nano-banana-pro` | Alias for 2.0-flash-preview (higher quality settings) |
+| Model | API Type | Description | Aspect Ratio |
+|-------|----------|-------------|--------------|
+| `gemini-2.5-flash-image` | generateContent | Nano Banana - Modelo oficial (recomendado) | ✅ Sí |
+| `gemini-3-pro-image-preview` | generateContent | Nano Banana Pro - Versión Pro | ✅ Sí |
+| `nano-banana-pro-preview` | generateContent | Nano Banana Pro Preview | ✅ Sí |
+| `gemini-3.1-flash-image-preview` | generateContent | Nano Banana 2 - Versión 2 | ✅ Sí |
+| `imagen-4.0-generate-001` | predict | Imagen 4 estándar | ✅ Sí |
+| `imagen-4.0-ultra-generate-001` | predict | Imagen 4 Ultra - Mayor calidad | ✅ Sí |
+| `imagen-4.0-fast-generate-001` | predict | Imagen 4 Fast - Más rápido | ✅ Sí |
 
 Get Gemini API key from: https://ai.google.dev/
 
-**Note:** Gemini models don't support aspect ratio parameter. Images are generated at the model's native resolution.
+**Aspect Ratios Soportados:**
+Todos los modelos soportan: `1:1`, `3:4`, `4:3`, `16:9`, `9:16`
+
+**Notas:**
+- Los modelos Gemini Image usan la API `generateContent` con parámetro `imageConfig.aspectRatio`
+- Los modelos Imagen usan la API `predict` con parámetro `aspectRatio`
+- Todos los modelos requieren tier de pago
+- **Recomendado:** `gemini-2.5-flash-image` (Nano Banana) - mejor para prompts narrativos
 
 ### Runtime Configuration (.runtime_config.json)
 

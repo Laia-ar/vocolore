@@ -61,7 +61,7 @@ def get_config(key: str, default=None, env_var: str = None):
 # Image generation provider selection
 IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "freepik")  # "freepik" or "gemini"
 FREEPIK_MODEL = os.getenv("FREEPIK_MODEL", "gemini-2-5-flash-image-preview")  # Freepik model
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-preview")  # Gemini model
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-image")  # Gemini model
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")  # For Google Gemini API
 FREEPIK_API_KEY = os.getenv("FREEPIK_API_KEY", "")  # For Freepik API
 PRINT_PAGE_SIZE = os.getenv("PRINT_PAGE_SIZE", "A4")  # A4 or A5
@@ -75,6 +75,7 @@ transcribe_queue: "queue.Queue[bytes]" = queue.Queue()
 buffer_packet_count = 0
 clip_counter = 0
 runtime_lock = threading.Lock()
+wifi_socket: socket.socket = None  # Global socket reference for sound commands
 runtime_flags = {
     "ENABLE_FREEPIK": ENABLE_FREEPIK,
     "PRINT_IMAGE": PRINT_IMAGE,
@@ -293,6 +294,17 @@ def sanitize_audio(raw: bytes) -> bytes:
     return raw
 
 
+def send_sound_command(sock: socket.socket, sound_id: int):
+    """Send a sound command to the ESP32."""
+    try:
+        # Framed protocol: [type='S'][len=1][payload=sound_id]
+        header = bytes([ord('S'), 0, 1])
+        payload = bytes([sound_id])
+        sock.sendall(header + payload)
+    except Exception as exc:
+        console.print(f"[red]Failed to send sound command:[/red] {exc}")
+
+
 def transcribe_worker(model: WhisperModel):
     """Consume raw audio from the queue and run Whisper transcription."""
     while not stop_event.is_set():
@@ -313,6 +325,9 @@ def transcribe_worker(model: WhisperModel):
             console.print(f"[grey58]Skipped {secs:.2f}s clip (below MIN_AUDIO_SEC {min_sec}).[/grey58]")
             if debug_timing_enabled():
                 console.print(f"[grey]Clip skipped (too short). Bytes={len(raw)}[/grey]")
+            # Sound 0 = explosion (audio too short/error)
+            if wifi_socket:
+                send_sound_command(wifi_socket, 0)
             continue
 
         if SAVE_CLIP_WAV:
@@ -353,6 +368,9 @@ def transcribe_worker(model: WhisperModel):
             transcription = "".join(segment.text for segment in segments).strip()
             if transcription:
                 console.print(f"[bold green]Transcription:[/bold green] {transcription}")
+                # Sound 3 = powerUp (transcription complete)
+                if wifi_socket:
+                    send_sound_command(wifi_socket, 3)
                 if freepik_enabled():
                     threading.Thread(
                         target=send_image_generation_request,
@@ -361,16 +379,21 @@ def transcribe_worker(model: WhisperModel):
                     ).start()
             else:
                 console.print("[grey58]No speech detected.[/grey58]")
+                # Sound 0 = explosion (no speech detected - error)
+                if wifi_socket:
+                    send_sound_command(wifi_socket, 0)
         except Exception as e:
             console.print(f"[red]Transcription error:[/red] {e}")
 
 
 def wifi_listener():
     """Connect to the ESP32 stream and feed audio packets into the buffer."""
+    global wifi_socket
     console.print(f"[blue]Connecting to {HOST}:{PORT}...[/blue]")
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(1.0)
     sock.connect((HOST, PORT))
+    wifi_socket = sock  # Store for sound commands
     console.print("[green]Connected to WiFi audio source.[/green]")
     update_runtime_state(READY=True, BUTTON_STATE="idle")
 
@@ -437,6 +460,7 @@ def wifi_listener():
         if wav_writer:
             wav_writer.close()
         sock.close()
+        wifi_socket = None
         update_runtime_state(READY=False, BUTTON_STATE="idle")
         console.print("[yellow]WiFi listener stopped.[/yellow]")
 
@@ -497,27 +521,51 @@ FREEPIK_MODELS = {
 }
 
 # Gemini (Google) Model configurations
-# Model IDs must use the format: gemini-X.Y-flash-preview or gemini-X.Y-pro-preview
+# Model IDs disponibles según la API de Gemini
 GEMINI_MODELS = {
-    "gemini-2.0-flash-preview": {
-        "model_id": "gemini-2.0-flash-preview",
-        "supports_aspect_ratio": False,
-        "description": "Gemini 2.0 Flash - Fast image generation",
+    # Modelos Gemini Image (usando generateContent)
+    "gemini-2.5-flash-image": {
+        "model_id": "gemini-2.5-flash-image",
+        "api_type": "generateContent",
+        "supports_aspect_ratio": True,
+        "description": "Nano Banana - Modelo oficial de generación de imágenes",
     },
-    "gemini-1.5-flash": {
-        "model_id": "gemini-1.5-flash",
-        "supports_aspect_ratio": False,
-        "description": "Gemini 1.5 Flash - Standard image generation",
+    "gemini-3-pro-image-preview": {
+        "model_id": "gemini-3-pro-image-preview",
+        "api_type": "generateContent",
+        "supports_aspect_ratio": True,
+        "description": "Nano Banana Pro - Versión Pro del modelo de imagen",
     },
-    "gemini-nano-banana": {
-        "model_id": "gemini-2.0-flash-preview",  # Use flash for nano banana
-        "supports_aspect_ratio": False,
-        "description": "Nano Banana - Fast, efficient (uses 2.0 Flash)",
+    "nano-banana-pro-preview": {
+        "model_id": "nano-banana-pro-preview",
+        "api_type": "generateContent",
+        "supports_aspect_ratio": True,
+        "description": "Nano Banana Pro (Preview)",
     },
-    "gemini-nano-banana-pro": {
-        "model_id": "gemini-2.0-flash-preview",  # Use flash for pro version too
-        "supports_aspect_ratio": False,
-        "description": "Nano Banana Pro - Higher quality (uses 2.0 Flash)",
+    "gemini-3.1-flash-image-preview": {
+        "model_id": "gemini-3.1-flash-image-preview",
+        "api_type": "generateContent",
+        "supports_aspect_ratio": True,
+        "description": "Nano Banana 2 - Versión 2 del modelo de imagen",
+    },
+    # Modelos Imagen (usando predict)
+    "imagen-4.0-generate-001": {
+        "model_id": "imagen-4.0-generate-001",
+        "api_type": "predict",
+        "supports_aspect_ratio": True,
+        "description": "Imagen 4 - Modelo estándar",
+    },
+    "imagen-4.0-ultra-generate-001": {
+        "model_id": "imagen-4.0-ultra-generate-001",
+        "api_type": "predict",
+        "supports_aspect_ratio": True,
+        "description": "Imagen 4 Ultra - Mayor calidad",
+    },
+    "imagen-4.0-fast-generate-001": {
+        "model_id": "imagen-4.0-fast-generate-001",
+        "api_type": "predict",
+        "supports_aspect_ratio": True,
+        "description": "Imagen 4 Fast - Generación rápida",
     },
 }
 
@@ -579,106 +627,175 @@ def build_freepik_payload(model_name: str, prompt: str) -> dict:
     return payload
 
 
-def send_gemini_image_request(prompt: str, model_name: str = "gemini-2.5-flash-image"):
-    """Call Google Gemini API for image generation."""
-    api_key = GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        console.print("[red]GEMINI_API_KEY or GOOGLE_API_KEY not set; skipping image generation.[/red]")
-        return
-    
-    config = GEMINI_MODELS.get(model_name, GEMINI_MODELS["gemini-2.5-flash-image"])
-    model_id = config["model_id"]
-    
-    # Map page size to aspect ratio
-    page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
-    page_to_ratio = {
-        "A4": "3:4",    # Portrait
-        "A5": "3:4",    # Portrait
-    }
-    aspect_ratio = page_to_ratio.get(page_size, "3:4")
-    
+def _call_gemini_generate_content(api_key: str, model_id: str, prompt: str, model_name: str) -> tuple[bool, bytes | None, str | None]:
+    """Call Gemini API using generateContent endpoint. Returns (success, image_data, error_message)."""
     base_url = "https://generativelanguage.googleapis.com/v1beta"
     url = f"{base_url}/models/{model_id}:generateContent?key={api_key}"
     
-    # Build Gemini payload
-    # Note: Gemini image generation API uses a simpler approach
-    prompt_text = f"coloring book style, black and white line art outline drawing of {prompt}, white background, clean thick lines suitable for children coloring page, no shading, no grayscale"
+    prompt_text = (
+        f"coloring book style, black and white line art outline drawing of {prompt}, "
+        f"white background, clean thick lines suitable for children coloring page, "
+        f"edge to edge drawing, fills the entire frame, no borders, no margins, "
+        f"minimal text only, short labels or signs okay, NO paragraphs, "
+        f"NO long text blocks, NO story text in the image, "
+        f"no shading, no grayscale"
+    )
+    
+    # Get aspect ratio from page size setting
+    page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
+    aspect_ratio = "3:2" if page_size.upper() in ["A4", "A5"] else "1:1"
     
     payload = {
         "contents": [{
-            "parts": [{
-                "text": prompt_text
-            }]
+            "parts": [{"text": prompt_text}]
         }],
         "generationConfig": {
             "responseModalities": ["Text", "Image"],
             "temperature": 0.7,
+            "imageConfig": {
+                "aspectRatio": aspect_ratio,
+            }
         }
     }
     
-    headers = {
-        "Content-Type": "application/json",
-    }
+    headers = {"Content-Type": "application/json"}
     
     try:
-        console.print(f"[blue]Requesting Gemini image ({model_name}) for: {prompt}[/blue]")
-        console.print(f"[grey]URL: {url[:80]}...[/grey]")
-        console.print(f"[grey]Payload: {json.dumps(payload, indent=2)}[/grey]")
-        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        resp = requests.post(url, headers=headers, json=payload, timeout=120)
         if resp.status_code != 200:
-            console.print(f"[red]Gemini API error {resp.status_code}: {resp.text}[/red]")
-        resp.raise_for_status()
+            return False, None, f"HTTP {resp.status_code}: {resp.text[:200]}"
+        
         data = resp.json()
         
         # Extract image from response
-        image_data = None
         if "candidates" in data and len(data["candidates"]) > 0:
             candidate = data["candidates"][0]
             if "content" in candidate and "parts" in candidate["content"]:
                 for part in candidate["content"]["parts"]:
                     if "inlineData" in part:
-                        image_data = part["inlineData"]["data"]
-                        break
+                        return True, base64.b64decode(part["inlineData"]["data"]), None
         
+        return False, None, f"No image data in response: {data}"
+        
+    except requests.RequestException as exc:
+        return False, None, f"Request error: {exc}"
+    except Exception as exc:
+        return False, None, f"Error: {exc}"
+
+
+def _call_imagen_predict(api_key: str, model_id: str, prompt: str, model_name: str) -> tuple[bool, bytes | None, str | None]:
+    """Call Imagen API using predict endpoint. Returns (success, image_data, error_message)."""
+    base_url = "https://generativelanguage.googleapis.com/v1beta"
+    url = f"{base_url}/models/{model_id}:predict?key={api_key}"
+    
+    page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
+    aspect_ratio = "3:2" if page_size.upper() in ["A4", "A5"] else "1:1"
+    
+    prompt_text = (
+        f"coloring book style, black and white line art outline drawing of {prompt}, "
+        f"white background, clean thick lines suitable for children coloring page, "
+        f"edge to edge drawing, fills the entire frame, no borders, no margins, "
+        f"minimal text only, short labels or signs okay, NO paragraphs, "
+        f"NO long text blocks, NO story text in the image, "
+        f"no shading, no grayscale"
+    )
+    
+    payload = {
+        "instances": [{"prompt": prompt_text}],
+        "parameters": {
+            "sampleCount": 1,
+            "aspectRatio": aspect_ratio,
+        }
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        if resp.status_code != 200:
+            return False, None, f"HTTP {resp.status_code}: {resp.text[:200]}"
+        
+        data = resp.json()
+        predictions = data.get("predictions", [])
+        
+        if not predictions:
+            return False, None, f"No predictions in response: {data}"
+        
+        image_data = predictions[0].get("bytesBase64Encoded")
         if not image_data:
-            console.print("[red]No image data returned from Gemini API.[/red]")
-            console.print(f"[grey]Response: {data}[/grey]")
-            return
+            return False, None, "No image data in prediction"
         
-        # Save image
-        import base64
+        return True, base64.b64decode(image_data), None
+        
+    except requests.RequestException as exc:
+        return False, None, f"Request error: {exc}"
+    except Exception as exc:
+        return False, None, f"Error: {exc}"
+
+
+def send_gemini_image_request(prompt: str, model_name: str = "gemini-2.5-flash-image"):
+    """Call Google Gemini/Imagen API for image generation."""
+    api_key = GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        console.print("[red]GEMINI_API_KEY or GOOGLE_API_KEY not set; skipping image generation.[/red]")
+        return
+    
+    # Default to gemini-2.5-flash-image if model not found
+    if model_name not in GEMINI_MODELS:
+        console.print(f"[yellow]Model {model_name} not found, using gemini-2.5-flash-image[/yellow]")
+        model_name = "gemini-2.5-flash-image"
+    
+    config = GEMINI_MODELS[model_name]
+    model_id = config["model_id"]
+    api_type = config.get("api_type", "generateContent")
+    
+    console.print(f"[blue]Requesting Gemini image ({model_name}) for: {prompt}[/blue]")
+    
+    # Call appropriate API based on model type
+    if api_type == "predict":
+        success, image_bytes, error = _call_imagen_predict(api_key, model_id, prompt, model_name)
+    else:
+        success, image_bytes, error = _call_gemini_generate_content(api_key, model_id, prompt, model_name)
+    
+    if not success:
+        console.print(f"[red]Gemini API error:[/red] {error}")
+        return
+    
+    # Save image
+    try:
         filename = f"generated_image_gemini_{int(time.time())}.png"
         with open(filename, "wb") as fh:
-            fh.write(base64.b64decode(image_data))
+            fh.write(image_bytes)
         console.print(f"[bold green]Image saved to {filename}[/bold green]")
-        
-        # Process for printing/PDF
-        pdf_path = save_pdf_copy(filename)
-        try:
-            with runtime_lock:
-                runtime_flags["LAST_IMAGE"] = filename
-            persist_runtime_flags()
-        except Exception as exc:
-            console.print(f"[red]Failed to record image path:[/red] {exc}")
-        
-        if print_enabled():
-            target_path = pdf_path
-            if target_path is None:
-                target_path = make_print_image_copy(filename, str(int(time.time())))
-            try:
-                subprocess.run([PRINT_COMMAND, target_path or filename], check=True)
-                console.print(f"[green]Sent image to printer via {PRINT_COMMAND}: {target_path or filename}[/green]")
-            except subprocess.CalledProcessError as exc:
-                console.print(f"[red]Printing failed ({PRINT_COMMAND}):[/red] {exc}")
-            except Exception as exc:
-                console.print(f"[red]Unexpected printing error:[/red] {exc}")
-        elif pdf_path:
-            console.print(f"[green]PDF copy ready at {pdf_path} (printing disabled).[/green]")
-            
-    except requests.RequestException as exc:
-        console.print(f"[red]Gemini API request error:[/red] {exc}")
     except Exception as exc:
-        console.print(f"[red]Unexpected Gemini error:[/red] {exc}")
+        console.print(f"[red]Failed to save image:[/red] {exc}")
+        return
+    
+    # Process for printing/PDF
+    pdf_path = save_pdf_copy(filename)
+    try:
+        with runtime_lock:
+            runtime_flags["LAST_IMAGE"] = filename
+        persist_runtime_flags()
+    except Exception as exc:
+        console.print(f"[red]Failed to record image path:[/red] {exc}")
+    
+    if print_enabled():
+        target_path = pdf_path
+        if target_path is None:
+            target_path = make_print_image_copy(filename, str(int(time.time())))
+        try:
+            subprocess.run([PRINT_COMMAND, target_path or filename], check=True)
+            console.print(f"[green]Sent image to printer via {PRINT_COMMAND}: {target_path or filename}[/green]")
+            # Sound 4 = jump (printing/screen display)
+            if wifi_socket:
+                send_sound_command(wifi_socket, 4)
+        except subprocess.CalledProcessError as exc:
+            console.print(f"[red]Printing failed ({PRINT_COMMAND}):[/red] {exc}")
+        except Exception as exc:
+            console.print(f"[red]Unexpected printing error:[/red] {exc}")
+    elif pdf_path:
+        console.print(f"[green]PDF copy ready at {pdf_path} (printing disabled).[/green]")
 
 
 def send_image_generation_request(prompt: str):
@@ -779,6 +896,9 @@ def send_image_generation_request(prompt: str):
             try:
                 subprocess.run([PRINT_COMMAND, target_path or filename], check=True)
                 console.print(f"[green]Sent image to printer via {PRINT_COMMAND}: {target_path or filename}[/green]")
+                # Sound 4 = jump (printing/screen display)
+                if wifi_socket:
+                    send_sound_command(wifi_socket, 4)
             except subprocess.CalledProcessError as exc:
                 console.print(f"[red]Printing failed ({PRINT_COMMAND}):[/red] {exc}")
             except Exception as exc:
