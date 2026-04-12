@@ -6,7 +6,7 @@
 // ======================
 // Wi-Fi AP config
 // ======================
-const char* AP_SSID = "AtomEchoAP";
+const char* AP_SSID = "Vocolore";
 const char* AP_PASSWORD = "12345678";
 
 WiFiServer server(5005);

@@ -62,7 +62,7 @@ def get_config(key: str, default=None, env_var: str = None):
 # Image generation provider selection
 IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "freepik")  # "freepik" or "gemini"
 FREEPIK_MODEL = os.getenv("FREEPIK_MODEL", "gemini-2-5-flash-image-preview")  # Freepik model
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-image")  # Gemini model
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-image-preview")  # Gemini model
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")  # For Google Gemini API
 FREEPIK_API_KEY = os.getenv("FREEPIK_API_KEY", "")  # For Freepik API
 PRINT_PAGE_SIZE = os.getenv("PRINT_PAGE_SIZE", "A4")  # A4 or A5
@@ -653,8 +653,8 @@ def _call_gemini_generate_content(api_key: str, model_id: str, prompt: str, mode
     )
     
     # Get aspect ratio from page size setting
-    page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
-    aspect_ratio = "3:2" if page_size.upper() in ["A4", "A5"] else "1:1"
+    # Always use 4:3 aspect ratio regardless of page size
+    aspect_ratio = "4:3"
     
     payload = {
         "contents": [{
@@ -699,8 +699,8 @@ def _call_imagen_predict(api_key: str, model_id: str, prompt: str, model_name: s
     base_url = "https://generativelanguage.googleapis.com/v1beta"
     url = f"{base_url}/models/{model_id}:predict?key={api_key}"
     
-    page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
-    aspect_ratio = "3:2" if page_size.upper() in ["A4", "A5"] else "1:1"
+    # Always use 4:3 aspect ratio regardless of page size
+    aspect_ratio = "4:3"
     
     prompt_text = (
         f"coloring book style, black and white line art outline drawing of {prompt}, "
@@ -942,29 +942,44 @@ def save_pdf_copy(image_path: str):
         console.print("[yellow]PRINT_TO_PDF is enabled but Pillow is not installed; skipping PDF export.[/yellow]")
         return None
     page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
-    page_w, page_h = get_page_dimensions(page_size)
+    is_a5 = page_size.upper() == "A5"
+    
+    # For A5, use A4 canvas and place image in upper half
+    # For A4, use normal A4 canvas
+    if is_a5:
+        page_w, page_h = 2480, 3508  # A4 dimensions
+        content_h = 1748  # Upper half (A5 height)
+    else:
+        page_w, page_h = get_page_dimensions(page_size)
+        content_h = page_h
+    
     try:
         os.makedirs(PRINT_PDF_DIR, exist_ok=True)
         pdf_path = Path(PRINT_PDF_DIR) / (Path(image_path).stem + ".pdf")
         with Image.open(image_path) as img:
             if img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
-            # Create canvas at 300 DPI and center-fit the image
+            # Create canvas at 300 DPI
             margin = 120  # ~10 mm margin
             canvas = Image.new("RGB", (page_w, page_h), "white")
-            max_w, max_h = page_w - 2 * margin, page_h - 2 * margin
-            # Prefer filling the width (with aspect ratio) unless it exceeds page height
+            max_w = page_w - 2 * margin
+            max_h = content_h - 2 * margin
+            # Prefer filling the width (with aspect ratio) unless it exceeds max height
             target_w = max_w
             target_h = int(img.height * (target_w / img.width))
             if target_h > max_h:
                 target_h = max_h
                 target_w = int(img.width * (target_h / img.height))
             resized = img.resize((target_w, target_h))
-            x = (page_w - target_w) // 2
-            y = (page_h - target_h) // 2
+            x = (page_w - target_w) // 2  # Center horizontally
+            # For A5: place in upper half, for A4: center vertically
+            if is_a5:
+                y = margin  # Top margin only
+            else:
+                y = (page_h - target_h) // 2  # Center vertically
             canvas.paste(resized, (x, y))
             canvas.save(pdf_path, "PDF", resolution=300.0)
-        console.print(f"[green]Saved PDF copy to {pdf_path} ({page_size})[/green]")
+        console.print(f"[green]Saved PDF copy to {pdf_path} ({page_size}{' on A4 upper half' if is_a5 else ''})[/green]")
         return str(pdf_path)
     except Exception as exc:
         console.print(f"[red]PDF export failed:[/red] {exc}")
@@ -972,11 +987,21 @@ def save_pdf_copy(image_path: str):
 
 
 def make_print_image_copy(image_path: str, task_id: str = ""):
-    """Build a print-friendly PNG with the image scaled to fill width (A4 or A5)."""
+    """Build a print-friendly PNG with the image scaled to fill width (A4 or A5 on A4 paper)."""
     if Image is None:
         return None
     page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
-    page_w, page_h = get_page_dimensions(page_size)
+    is_a5 = page_size.upper() == "A5"
+    
+    # For A5, use A4 canvas and place in upper half
+    # For A4, use normal A4 canvas
+    if is_a5:
+        page_w, page_h = 2480, 3508  # A4 dimensions
+        content_h = 1748  # Upper half (A5 height)
+    else:
+        page_w, page_h = get_page_dimensions(page_size)
+        content_h = page_h
+    
     try:
         os.makedirs(PRINT_PDF_DIR, exist_ok=True)
         out_name = f"print_image_{task_id or Path(image_path).stem}.png"
@@ -985,7 +1010,8 @@ def make_print_image_copy(image_path: str, task_id: str = ""):
             if img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
             margin = 120
-            max_w, max_h = page_w - 2 * margin, page_h - 2 * margin
+            max_w = page_w - 2 * margin
+            max_h = content_h - 2 * margin
             target_w = max_w
             target_h = int(img.height * (target_w / img.width))
             if target_h > max_h:
@@ -993,11 +1019,15 @@ def make_print_image_copy(image_path: str, task_id: str = ""):
                 target_w = int(img.width * (target_h / img.height))
             resized = img.resize((target_w, target_h))
             canvas = Image.new("RGB", (page_w, page_h), "white")
-            x = (page_w - target_w) // 2
-            y = (page_h - target_h) // 2
+            x = (page_w - target_w) // 2  # Center horizontally
+            # For A5: place in upper half, for A4: center vertically
+            if is_a5:
+                y = margin  # Top margin only
+            else:
+                y = (page_h - target_h) // 2  # Center vertically
             canvas.paste(resized, (x, y))
             canvas.save(out_path, "PNG")
-        console.print(f"[green]Prepared {page_size} print image at {out_path}[/green]")
+        console.print(f"[green]Prepared {page_size}{' on A4 upper half' if is_a5 else ''} print image at {out_path}[/green]")
         return str(out_path)
     except Exception as exc:
         console.print(f"[red]Print image prep failed:[/red] {exc}")

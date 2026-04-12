@@ -51,9 +51,9 @@ class DebugUI:
         self.page_size_var = tk.StringVar(value=cfg.get("PRINT_PAGE_SIZE", "A4"))
         self.provider_var = tk.StringVar(value=cfg.get("IMAGE_PROVIDER", "freepik"))
         self.model_var = tk.StringVar(value=cfg.get("FREEPIK_MODEL", "gemini-2-5-flash-image-preview"))
-        self.gemini_model_var = tk.StringVar(value=cfg.get("GEMINI_MODEL", "gemini-2.0-flash-preview"))
+        self.gemini_model_var = tk.StringVar(value=cfg.get("GEMINI_MODEL", "gemini-3.1-flash-image-preview"))
         
-        self.chk_freepik = tk.Checkbutton(opt_frame, text="Freepik", variable=self.var_freepik, command=self.apply_config)
+        self.chk_freepik = tk.Checkbutton(opt_frame, text="Gen Img", variable=self.var_freepik, command=self.apply_config)
         self.chk_freepik.pack(side="left", padx=4)
         self.chk_open = tk.Checkbutton(opt_frame, text="Open image", variable=self.var_open, command=self.apply_config)
         self.chk_open.pack(side="left", padx=4)
@@ -95,10 +95,10 @@ class DebugUI:
         
         # Gemini models (using actual Google API model names)
         gemini_models = [
+            "gemini-3.1-flash-image-preview",
+            "gemini-3-pro-image-preview",
+            "gemini-2.5-flash-image",
             "gemini-2.0-flash-preview",
-            "gemini-1.5-flash",
-            "gemini-nano-banana",
-            "gemini-nano-banana-pro",
         ]
         self.gemini_model_combo = tk.OptionMenu(self.model_frame, self.gemini_model_var, *gemini_models)
         # Initially hidden, shown when gemini selected
