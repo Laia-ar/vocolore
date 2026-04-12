@@ -23,11 +23,10 @@ dev = [
     "pytest",
 ]
 
-[[tool.uv.index]]
-name = "pytorch-cu118"
-url = "https://download.pytorch.org/whl/cu118"
-explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cu118" }
-torchaudio = { index = "pytorch-cu118" }
+# Platform-specific PyTorch configuration
+# For CUDA (Linux/Windows with NVIDIA GPU):
+# uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+# For MPS (macOS with Apple Silicon):
+# uv pip install torch torchaudio
+# For CPU only:
+# uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu

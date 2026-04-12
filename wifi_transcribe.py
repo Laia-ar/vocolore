@@ -35,7 +35,7 @@ LANGUAGE = os.getenv("TRANSCRIBE_LANGUAGE", "es")
 MIN_AUDIO_SEC = float(os.getenv("MIN_AUDIO_SEC", "4.0"))       # ignore very short clips (skip noise)
 MAX_BUFFER_SEC = float(os.getenv("MAX_BUFFER_SEC", "16.0"))    # force flush if buffer grows too long
 SAVE_WIFI_WAV = os.getenv("SAVE_WIFI_WAV", "0") == "1"         # set to 1 to persist raw audio
-DEVICE = os.getenv("WHISPER_DEVICE", "cuda")
+DEVICE = os.getenv("WHISPER_DEVICE", "auto")  # auto, cuda, mps, or cpu
 COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "float16")
 ENABLE_FREEPIK = os.getenv("ENABLE_FREEPIK", "0") == "1"
 FREEPIK_WEBHOOK_URL = os.getenv("FREEPIK_WEBHOOK_URL", "https://www.example.com/webhook")
@@ -1036,23 +1036,36 @@ def make_print_image_copy(image_path: str, task_id: str = ""):
 
 def load_whisper_model():
     """
-    Try CUDA first, but fall back to CPU so the service still runs if the GPU setup
-    is missing the right runtime or drivers.
+    Load Whisper model with automatic device selection.
+    Priority: CUDA (NVIDIA) -> MPS (Apple Silicon) -> CPU
     """
-    attempts = [DEVICE]
-    if DEVICE.lower() == "cuda":
-        attempts.append("cpu")
+    import torch
+    
+    # Auto-detect best available device
+    if DEVICE.lower() == "auto":
+        if torch.cuda.is_available():
+            attempts = ["cuda", "cpu"]
+        elif torch.backends.mps.is_available():
+            attempts = ["mps", "cpu"]
+        else:
+            attempts = ["cpu"]
+    else:
+        attempts = [DEVICE]
+        if DEVICE.lower() in ["cuda", "mps"]:
+            attempts.append("cpu")
 
     last_error = None
     for device in attempts:
         console.print(f"[bold blue]Loading Whisper model: {MODEL_SIZE} ({device})[/bold blue]")
         try:
-            return whisper.load_model(MODEL_SIZE, device=device)
+            model = whisper.load_model(MODEL_SIZE, device=device)
+            console.print(f"[green]Whisper model loaded on {device}[/green]")
+            return model
         except Exception as exc:
             last_error = exc
             console.print(f"[red]Failed to load Whisper model on {device}:[/red] {exc}")
-            if device.lower() == "cuda":
-                console.print("[yellow]CUDA failed; will retry on CPU unless WHISPER_DEVICE is overridden.[/yellow]")
+            if device.lower() in ["cuda", "mps"]:
+                console.print(f"[yellow]{device.upper()} failed; will retry on CPU.[/yellow]")
 
     raise SystemExit(f"Could not load Whisper model: {last_error}")
 

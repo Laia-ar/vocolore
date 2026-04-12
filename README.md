@@ -45,11 +45,32 @@ To set up and run this project, follow these steps:
   python wifi_user_ui.py
   ```
 
-## Requirements
+## Platform Support
 
+### Linux / Windows (NVIDIA GPU)
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) for dependency management
-- Dependencies: `faster-whisper`, `sounddevice`, `numpy`, `rich`, `pynput`, `soundfile`, `python-dotenv`, `requests`, `Pillow`
+- NVIDIA GPU with CUDA (optional but recommended)
+- Dependencies: `openai-whisper`, `torch`, `sounddevice`, `numpy`, `rich`, `pynput`, `soundfile`, `python-dotenv`, `requests`, `Pillow`
+
+### macOS (Apple Silicon - M1/M2/M3)
+Vocolore supports macOS with Apple Silicon through MPS (Metal Performance Shaders) or CPU fallback.
+
+**Additional requirements for Mac:**
+```bash
+# Install portaudio for audio support
+brew install portaudio
+
+# Install PyTorch with MPS support
+uv pip install torch torchaudio
+
+# The device will auto-detect: MPS (GPU) -> CPU fallback
+```
+
+**Note:** The `WHISPER_DEVICE=auto` setting will automatically use:
+1. CUDA (NVIDIA GPUs)
+2. MPS (Apple Silicon)
+3. CPU (fallback)
 
 ## Freepik API Key
 
