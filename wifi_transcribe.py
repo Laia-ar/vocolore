@@ -184,7 +184,10 @@ def config_watcher():
                 if last_mtime is None or mtime != last_mtime:
                     last_mtime = mtime
                     with open(RUNTIME_CONFIG_FILE, "r", encoding="utf-8") as fh:
-                        data = json.load(fh)
+                        content = fh.read().strip()
+                        if not content:
+                            continue
+                        data = json.loads(content)
                     with runtime_lock:
                         for key in ("ENABLE_FREEPIK", "PRINT_IMAGE", "OPEN_IMAGE"):
                             if key in data:
@@ -214,6 +217,8 @@ def config_watcher():
                             if key in data:
                                 runtime_flags[key] = data[key]
                     console.print(f"[grey]Runtime config reloaded from {RUNTIME_CONFIG_FILE}[/grey]")
+        except json.JSONDecodeError as exc:
+            console.print(f"[yellow]Runtime config file is empty or invalid JSON, skipping...[/yellow]")
         except Exception as exc:
             console.print(f"[red]Runtime config watcher error:[/red] {exc}")
         time.sleep(1.0)
