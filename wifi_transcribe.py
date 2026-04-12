@@ -1014,6 +1014,33 @@ def load_whisper_model():
     raise SystemExit(f"Could not load Whisper model: {last_error}")
 
 
+def wifi_listener_with_retry():
+    """Connect to WiFi with exponential backoff retry."""
+    max_retries = 10
+    base_delay = 1.0  # Start with 1 second
+    max_delay = 30.0  # Cap at 30 seconds
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            console.print(f"[blue]Connection attempt {attempt}/{max_retries}...[/blue]")
+            wifi_listener()
+            # If wifi_listener returns normally, break the retry loop
+            break
+        except (socket.error, ConnectionRefusedError, OSError) as e:
+            if attempt == max_retries:
+                console.print(f"[red]Failed to connect after {max_retries} attempts. Giving up.[/red]")
+                raise
+            
+            delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+            console.print(f"[yellow]Connection failed: {e}[/yellow]")
+            console.print(f"[yellow]Retrying in {delay:.1f} seconds...[/yellow]")
+            time.sleep(delay)
+        except Exception as e:
+            # For other exceptions, don't retry
+            console.print(f"[red]Unexpected error: {e}[/red]")
+            raise
+
+
 def main():
     model = load_whisper_model()
 
@@ -1026,7 +1053,7 @@ def main():
     update_runtime_state(RUNNING=True, READY=False, BUTTON_STATE="idle")
 
     try:
-        wifi_listener()
+        wifi_listener_with_retry()
     except KeyboardInterrupt:
         console.print("\n[red]Stopping...[/red]")
         stop_event.set()
