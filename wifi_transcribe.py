@@ -61,7 +61,7 @@ def get_config(key: str, default=None, env_var: str = None):
 # Image generation provider selection
 IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "freepik")  # "freepik" or "gemini"
 FREEPIK_MODEL = os.getenv("FREEPIK_MODEL", "gemini-2-5-flash-image-preview")  # Freepik model
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-image")  # Gemini model
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-preview")  # Gemini model
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")  # For Google Gemini API
 FREEPIK_API_KEY = os.getenv("FREEPIK_API_KEY", "")  # For Freepik API
 PRINT_PAGE_SIZE = os.getenv("PRINT_PAGE_SIZE", "A4")  # A4 or A5
@@ -497,30 +497,27 @@ FREEPIK_MODELS = {
 }
 
 # Gemini (Google) Model configurations
+# Model IDs must use the format: gemini-X.Y-flash-preview or gemini-X.Y-pro-preview
 GEMINI_MODELS = {
-    "gemini-2.5-flash-image": {
-        "model_id": "gemini-2.5-flash-image",
-        "supports_aspect_ratio": True,
-        "aspect_ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"],
-        "description": "Gemini 2.5 Flash Image - Fast, high quality",
+    "gemini-2.0-flash-preview": {
+        "model_id": "gemini-2.0-flash-preview",
+        "supports_aspect_ratio": False,
+        "description": "Gemini 2.0 Flash - Fast image generation",
     },
-    "gemini-3-pro-image": {
-        "model_id": "gemini-3-pro-image",
-        "supports_aspect_ratio": True,
-        "aspect_ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "5:4", "4:5", "21:9"],
-        "description": "Gemini 3 Pro Image - Highest quality, 4K",
+    "gemini-1.5-flash": {
+        "model_id": "gemini-1.5-flash",
+        "supports_aspect_ratio": False,
+        "description": "Gemini 1.5 Flash - Standard image generation",
     },
     "gemini-nano-banana": {
-        "model_id": "gemini-2.5-flash-image",  # Alias for nano banana
-        "supports_aspect_ratio": True,
-        "aspect_ratios": ["1:1", "4:3", "3:4", "16:9", "9:16"],
-        "description": "Nano Banana - Fast, efficient",
+        "model_id": "gemini-2.0-flash-preview",  # Use flash for nano banana
+        "supports_aspect_ratio": False,
+        "description": "Nano Banana - Fast, efficient (uses 2.0 Flash)",
     },
     "gemini-nano-banana-pro": {
-        "model_id": "gemini-3-pro-image",  # Alias for nano banana pro
-        "supports_aspect_ratio": True,
-        "aspect_ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "5:4", "4:5", "21:9"],
-        "description": "Nano Banana Pro - 4K quality",
+        "model_id": "gemini-2.0-flash-preview",  # Use flash for pro version too
+        "supports_aspect_ratio": False,
+        "description": "Nano Banana Pro - Higher quality (uses 2.0 Flash)",
     },
 }
 
@@ -604,20 +601,20 @@ def send_gemini_image_request(prompt: str, model_name: str = "gemini-2.5-flash-i
     url = f"{base_url}/models/{model_id}:generateContent?key={api_key}"
     
     # Build Gemini payload
+    # Note: Gemini image generation API uses a simpler approach
+    prompt_text = f"coloring book style, black and white line art outline drawing of {prompt}, white background, clean thick lines suitable for children coloring page, no shading, no grayscale"
+    
     payload = {
         "contents": [{
             "parts": [{
-                "text": f"coloring book style image of {prompt}, black and white outline, white background, suitable for children to color"
+                "text": prompt_text
             }]
         }],
         "generationConfig": {
             "responseModalities": ["Text", "Image"],
+            "temperature": 0.7,
         }
     }
-    
-    # Add aspect ratio if supported
-    if config.get("supports_aspect_ratio"):
-        payload["generationConfig"]["aspectRatio"] = aspect_ratio
     
     headers = {
         "Content-Type": "application/json",

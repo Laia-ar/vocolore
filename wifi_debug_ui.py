@@ -51,7 +51,7 @@ class DebugUI:
         self.page_size_var = tk.StringVar(value=cfg.get("PRINT_PAGE_SIZE", "A4"))
         self.provider_var = tk.StringVar(value=cfg.get("IMAGE_PROVIDER", "freepik"))
         self.model_var = tk.StringVar(value=cfg.get("FREEPIK_MODEL", "gemini-2-5-flash-image-preview"))
-        self.gemini_model_var = tk.StringVar(value=cfg.get("GEMINI_MODEL", "gemini-2.5-flash-image"))
+        self.gemini_model_var = tk.StringVar(value=cfg.get("GEMINI_MODEL", "gemini-2.0-flash-preview"))
         
         self.chk_freepik = tk.Checkbutton(opt_frame, text="Freepik", variable=self.var_freepik, command=self.apply_config)
         self.chk_freepik.pack(side="left", padx=4)
@@ -93,10 +93,10 @@ class DebugUI:
         self.freepik_model_combo = tk.OptionMenu(self.model_frame, self.model_var, *freepik_models)
         self.freepik_model_combo.pack(side="left", padx=4)
         
-        # Gemini models
+        # Gemini models (using actual Google API model names)
         gemini_models = [
-            "gemini-2.5-flash-image",
-            "gemini-3-pro-image",
+            "gemini-2.0-flash-preview",
+            "gemini-1.5-flash",
             "gemini-nano-banana",
             "gemini-nano-banana-pro",
         ]

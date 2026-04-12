@@ -141,14 +141,16 @@ Copy `sample.config.env` to `config.env` and configure:
 
 **Available Gemini Models (Google API):**
 
-| Model | Description | Aspect Ratio Support |
-|-------|-------------|---------------------|
-| `gemini-2.5-flash-image` | Fast, high quality image generation | Yes |
-| `gemini-3-pro-image` | Highest quality, 4K resolution | Yes |
-| `gemini-nano-banana` | Fast, efficient (alias for 2.5-flash) | Yes |
-| `gemini-nano-banana-pro` | 4K quality (alias for 3-pro) | Yes |
+| Model | Description |
+|-------|-------------|
+| `gemini-2.0-flash-preview` | Fast image generation (recommended) |
+| `gemini-1.5-flash` | Standard image generation |
+| `gemini-nano-banana` | Alias for 2.0-flash-preview |
+| `gemini-nano-banana-pro` | Alias for 2.0-flash-preview (higher quality settings) |
 
 Get Gemini API key from: https://ai.google.dev/
+
+**Note:** Gemini models don't support aspect ratio parameter. Images are generated at the model's native resolution.
 
 ### Runtime Configuration (.runtime_config.json)
 
