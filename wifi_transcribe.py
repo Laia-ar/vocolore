@@ -583,7 +583,12 @@ def get_freepik_model_config(model_name: str) -> dict:
 def build_freepik_payload(model_name: str, prompt: str) -> dict:
     """Build the appropriate payload for the selected model."""
     config = get_freepik_model_config(model_name)
-    base_prompt = f"coloring book style image of {prompt}"
+    base_prompt = (
+        f"coloring book style image of {prompt}, "
+        f"NO text, NO letters, NO words, NO numbers, NO characters, "
+        f"NO alphabet, NO writing, NO signs, NO labels, "
+        f"pure visual illustration only, image must contain absolutely zero text"
+    )
     
     # Get aspect ratio from page size setting
     page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
@@ -641,8 +646,9 @@ def _call_gemini_generate_content(api_key: str, model_id: str, prompt: str, mode
         f"coloring book style, black and white line art outline drawing of {prompt}, "
         f"white background, clean thick lines suitable for children coloring page, "
         f"edge to edge drawing, fills the entire frame, no borders, no margins, "
-        f"minimal text only, short labels or signs okay, NO paragraphs, "
-        f"NO long text blocks, NO story text in the image, "
+        f"ABSOLUTELY NO text, NO letters, NO words, NO numbers, NO characters, "
+        f"NO alphabet, NO writing, NO signs, NO labels, NO captions, "
+        f"pure visual illustration only, image must contain zero text, "
         f"no shading, no grayscale"
     )
     
@@ -700,8 +706,9 @@ def _call_imagen_predict(api_key: str, model_id: str, prompt: str, model_name: s
         f"coloring book style, black and white line art outline drawing of {prompt}, "
         f"white background, clean thick lines suitable for children coloring page, "
         f"edge to edge drawing, fills the entire frame, no borders, no margins, "
-        f"minimal text only, short labels or signs okay, NO paragraphs, "
-        f"NO long text blocks, NO story text in the image, "
+        f"ABSOLUTELY NO text, NO letters, NO words, NO numbers, NO characters, "
+        f"NO alphabet, NO writing, NO signs, NO labels, NO captions, "
+        f"pure visual illustration only, image must contain zero text, "
         f"no shading, no grayscale"
     )
     
