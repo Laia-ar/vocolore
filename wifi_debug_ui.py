@@ -49,7 +49,10 @@ class DebugUI:
         self.var_pdf = tk.BooleanVar(value=cfg.get("PRINT_TO_PDF", False))
         self.var_debug = tk.BooleanVar(value=cfg.get("DEBUG_TIMING", False))
         self.page_size_var = tk.StringVar(value=cfg.get("PRINT_PAGE_SIZE", "A4"))
+        self.provider_var = tk.StringVar(value=cfg.get("IMAGE_PROVIDER", "freepik"))
         self.model_var = tk.StringVar(value=cfg.get("FREEPIK_MODEL", "gemini-2-5-flash-image-preview"))
+        self.gemini_model_var = tk.StringVar(value=cfg.get("GEMINI_MODEL", "gemini-2.5-flash-image"))
+        
         self.chk_freepik = tk.Checkbutton(opt_frame, text="Freepik", variable=self.var_freepik, command=self.apply_config)
         self.chk_freepik.pack(side="left", padx=4)
         self.chk_open = tk.Checkbutton(opt_frame, text="Open image", variable=self.var_open, command=self.apply_config)
@@ -59,13 +62,24 @@ class DebugUI:
         self.chk_pdf = tk.Checkbutton(opt_frame, text="PDF copy", variable=self.var_pdf, command=self.apply_config)
         self.chk_pdf.pack(side="left", padx=4)
         tk.Checkbutton(opt_frame, text="Debug timing", variable=self.var_debug, command=self.apply_config).pack(side="left", padx=4)
+        
         # Page size selector
         tk.Label(opt_frame, text="Page:").pack(side="left", padx=(12, 4))
         self.page_size_combo = tk.OptionMenu(opt_frame, self.page_size_var, "A4", "A5", command=lambda _: self.apply_config())
         self.page_size_combo.pack(side="left", padx=4)
-        # Model selector
-        tk.Label(opt_frame, text="Model:").pack(side="left", padx=(12, 4))
-        model_options = [
+        
+        # Provider selector
+        tk.Label(opt_frame, text="Provider:").pack(side="left", padx=(12, 4))
+        self.provider_combo = tk.OptionMenu(opt_frame, self.provider_var, "freepik", "gemini", command=lambda _: self.on_provider_change())
+        self.provider_combo.pack(side="left", padx=4)
+        
+        # Model selector frame (to swap based on provider)
+        self.model_frame = tk.Frame(opt_frame)
+        self.model_frame.pack(side="left", padx=4)
+        tk.Label(self.model_frame, text="Model:").pack(side="left")
+        
+        # Freepik models
+        freepik_models = [
             "gemini-2-5-flash-image-preview",
             "mystic",
             "flux-kontext-pro",
@@ -76,8 +90,18 @@ class DebugUI:
             "seedream-v4",
             "z-image",
         ]
-        self.model_combo = tk.OptionMenu(opt_frame, self.model_var, *model_options, command=lambda _: self.apply_config())
-        self.model_combo.pack(side="left", padx=4)
+        self.freepik_model_combo = tk.OptionMenu(self.model_frame, self.model_var, *freepik_models)
+        self.freepik_model_combo.pack(side="left", padx=4)
+        
+        # Gemini models
+        gemini_models = [
+            "gemini-2.5-flash-image",
+            "gemini-3-pro-image",
+            "gemini-nano-banana",
+            "gemini-nano-banana-pro",
+        ]
+        self.gemini_model_combo = tk.OptionMenu(self.model_frame, self.gemini_model_var, *gemini_models)
+        # Initially hidden, shown when gemini selected
 
         num_frame = tk.Frame(root)
         num_frame.pack(fill="x", padx=8, pady=4)
@@ -97,6 +121,7 @@ class DebugUI:
 
         self.root.after(100, self.drain_messages)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.on_provider_change()  # Initialize correct model selector
         self.apply_config()
         if os.getenv("AUTO_START", "1") == "1":
             self.start_proc()
@@ -114,6 +139,10 @@ class DebugUI:
         cfg = self._load_runtime_config()
         if not isinstance(cfg, dict):
             cfg = {}
+        # Determine which model to use based on provider
+        provider = self.provider_var.get()
+        model = self.gemini_model_var.get() if provider == "gemini" else self.model_var.get()
+        
         cfg.update(
             {
                 "ENABLE_FREEPIK": self.var_freepik.get(),
@@ -122,7 +151,9 @@ class DebugUI:
                 "PRINT_TO_PDF": self.var_pdf.get() and self.var_freepik.get(),
                 "DEBUG_TIMING": self.var_debug.get(),
                 "PRINT_PAGE_SIZE": self.page_size_var.get(),
+                "IMAGE_PROVIDER": provider,
                 "FREEPIK_MODEL": self.model_var.get(),
+                "GEMINI_MODEL": self.gemini_model_var.get(),
                 "RUNNING": self.running,
             }
         )
@@ -149,6 +180,17 @@ class DebugUI:
             self.var_print.set(False)
             self.var_pdf.set(False)
 
+    def on_provider_change(self):
+        """Switch between Freepik and Gemini model selectors."""
+        provider = self.provider_var.get()
+        if provider == "gemini":
+            self.freepik_model_combo.pack_forget()
+            self.gemini_model_combo.pack(side="left", padx=4)
+        else:
+            self.gemini_model_combo.pack_forget()
+            self.freepik_model_combo.pack(side="left", padx=4)
+        self.apply_config()
+
     def apply_config(self):
         self._write_runtime_config()
         self.append_log("Config applied.\n")
@@ -173,7 +215,9 @@ class DebugUI:
         env["PRINT_TO_PDF"] = "1" if self.var_pdf.get() else "0"
         env["DEBUG_TIMING"] = "1" if self.var_debug.get() else "0"
         env["PRINT_PAGE_SIZE"] = self.page_size_var.get()
+        env["IMAGE_PROVIDER"] = self.provider_var.get()
         env["FREEPIK_MODEL"] = self.model_var.get()
+        env["GEMINI_MODEL"] = self.gemini_model_var.get()
         env["MIN_AUDIO_SEC"] = str(self.entry_min.get())
         env["MAX_BUFFER_SEC"] = str(self.entry_max.get())
         env["RUNTIME_CONFIG_FILE"] = self.runtime_config

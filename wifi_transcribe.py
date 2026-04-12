@@ -49,6 +49,11 @@ OPEN_IMAGE = os.getenv("OPEN_IMAGE", "0") == "1"
 RUNTIME_CONFIG_FILE = os.getenv("RUNTIME_CONFIG_FILE", ".runtime_config.json")
 PRE_ROLL_SEC = float(os.getenv("PRE_ROLL_SEC", "0.3"))  # prepend this much from previous clip
 
+# Image generation provider selection
+IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "freepik")  # "freepik" or "gemini"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")  # For Google Gemini API
+FREEPIK_API_KEY = os.getenv("FREEPIK_API_KEY", "")  # For Freepik API
+
 console = Console()
 stop_event = threading.Event()
 buffer_lock = threading.Lock()
@@ -470,6 +475,34 @@ FREEPIK_MODELS = {
     },
 }
 
+# Gemini (Google) Model configurations
+GEMINI_MODELS = {
+    "gemini-2.5-flash-image": {
+        "model_id": "gemini-2.5-flash-image",
+        "supports_aspect_ratio": True,
+        "aspect_ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"],
+        "description": "Gemini 2.5 Flash Image - Fast, high quality",
+    },
+    "gemini-3-pro-image": {
+        "model_id": "gemini-3-pro-image",
+        "supports_aspect_ratio": True,
+        "aspect_ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "5:4", "4:5", "21:9"],
+        "description": "Gemini 3 Pro Image - Highest quality, 4K",
+    },
+    "gemini-nano-banana": {
+        "model_id": "gemini-2.5-flash-image",  # Alias for nano banana
+        "supports_aspect_ratio": True,
+        "aspect_ratios": ["1:1", "4:3", "3:4", "16:9", "9:16"],
+        "description": "Nano Banana - Fast, efficient",
+    },
+    "gemini-nano-banana-pro": {
+        "model_id": "gemini-3-pro-image",  # Alias for nano banana pro
+        "supports_aspect_ratio": True,
+        "aspect_ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "5:4", "4:5", "21:9"],
+        "description": "Nano Banana Pro - 4K quality",
+    },
+}
+
 
 def get_freepik_model_config(model_name: str) -> dict:
     """Get configuration for a Freepik model."""
@@ -528,8 +561,114 @@ def build_freepik_payload(model_name: str, prompt: str) -> dict:
     return payload
 
 
+def send_gemini_image_request(prompt: str, model_name: str = "gemini-2.5-flash-image"):
+    """Call Google Gemini API for image generation."""
+    api_key = GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        console.print("[red]GEMINI_API_KEY or GOOGLE_API_KEY not set; skipping image generation.[/red]")
+        return
+    
+    config = GEMINI_MODELS.get(model_name, GEMINI_MODELS["gemini-2.5-flash-image"])
+    model_id = config["model_id"]
+    
+    # Map page size to aspect ratio
+    page_size = os.getenv("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
+    page_to_ratio = {
+        "A4": "3:4",    # Portrait
+        "A5": "3:4",    # Portrait
+    }
+    aspect_ratio = page_to_ratio.get(page_size, "3:4")
+    
+    base_url = "https://generativelanguage.googleapis.com/v1beta"
+    url = f"{base_url}/models/{model_id}:generateContent?key={api_key}"
+    
+    # Build Gemini payload
+    payload = {
+        "contents": [{
+            "parts": [{
+                "text": f"coloring book style image of {prompt}, black and white outline, white background, suitable for children to color"
+            }]
+        }],
+        "generationConfig": {
+            "responseModalities": ["Text", "Image"],
+        }
+    }
+    
+    # Add aspect ratio if supported
+    if config.get("supports_aspect_ratio"):
+        payload["generationConfig"]["aspectRatio"] = aspect_ratio
+    
+    headers = {
+        "Content-Type": "application/json",
+    }
+    
+    try:
+        console.print(f"[blue]Requesting Gemini image ({model_name}) for: {prompt}[/blue]")
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        # Extract image from response
+        image_data = None
+        if "candidates" in data and len(data["candidates"]) > 0:
+            candidate = data["candidates"][0]
+            if "content" in candidate and "parts" in candidate["content"]:
+                for part in candidate["content"]["parts"]:
+                    if "inlineData" in part:
+                        image_data = part["inlineData"]["data"]
+                        break
+        
+        if not image_data:
+            console.print("[red]No image data returned from Gemini API.[/red]")
+            console.print(f"[grey]Response: {data}[/grey]")
+            return
+        
+        # Save image
+        import base64
+        filename = f"generated_image_gemini_{int(time.time())}.png"
+        with open(filename, "wb") as fh:
+            fh.write(base64.b64decode(image_data))
+        console.print(f"[bold green]Image saved to {filename}[/bold green]")
+        
+        # Process for printing/PDF
+        pdf_path = save_pdf_copy(filename)
+        try:
+            with runtime_lock:
+                runtime_flags["LAST_IMAGE"] = filename
+            persist_runtime_flags()
+        except Exception as exc:
+            console.print(f"[red]Failed to record image path:[/red] {exc}")
+        
+        if print_enabled():
+            target_path = pdf_path
+            if target_path is None:
+                target_path = make_print_image_copy(filename, str(int(time.time())))
+            try:
+                subprocess.run([PRINT_COMMAND, target_path or filename], check=True)
+                console.print(f"[green]Sent image to printer via {PRINT_COMMAND}: {target_path or filename}[/green]")
+            except subprocess.CalledProcessError as exc:
+                console.print(f"[red]Printing failed ({PRINT_COMMAND}):[/red] {exc}")
+            except Exception as exc:
+                console.print(f"[red]Unexpected printing error:[/red] {exc}")
+        elif pdf_path:
+            console.print(f"[green]PDF copy ready at {pdf_path} (printing disabled).[/green]")
+            
+    except requests.RequestException as exc:
+        console.print(f"[red]Gemini API request error:[/red] {exc}")
+    except Exception as exc:
+        console.print(f"[red]Unexpected Gemini error:[/red] {exc}")
+
+
 def send_image_generation_request(prompt: str):
-    """Call Freepik image generation API based on the transcript."""
+    """Call image generation API based on the transcript and provider settings."""
+    provider = os.getenv("IMAGE_PROVIDER", IMAGE_PROVIDER).lower()
+    
+    if provider == "gemini":
+        model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-image")
+        send_gemini_image_request(prompt, model_name)
+        return
+    
+    # Default to Freepik
     api_key = os.getenv("FREEPIK_API_KEY")
     if not api_key:
         console.print("[red]FREEPIK_API_KEY not set; skipping image generation.[/red]")

@@ -121,7 +121,9 @@ Copy `sample.config.env` to `config.env` and configure:
 | `SAVE_CLIP_WAV` | 0 | Save individual audio clips (0/1) |
 | `CLIP_WAV_DIR` | clips | Directory for saved clips |
 | `PRINT_PAGE_SIZE` | A4 | Page size for PDF/print (A4 or A5) |
-| `FREEPIK_MODEL` | gemini-2-5-flash-image-preview | Image generation model (see table below) |
+| `IMAGE_PROVIDER` | freepik | Image provider: "freepik" or "gemini" |
+| `FREEPIK_MODEL` | gemini-2-5-flash-image-preview | Freepik model (see table below) |
+| `GEMINI_MODEL` | gemini-2.5-flash-image | Gemini model (see table below) |
 
 **Available Freepik Models:**
 
@@ -136,6 +138,17 @@ Copy `sample.config.env` to `config.env` and configure:
 | `seedream-v4-5` | `/v1/ai/text-to-image/seedream-v4-5` | Great for text/posters, up to 4MP | No |
 | `seedream-v4` | `/v1/ai/text-to-image/seedream-v4` | Next-gen text-to-image | No |
 | `z-image` | `/v1/ai/text-to-image/z-image` | Fast, LoRA + ControlNet | No |
+
+**Available Gemini Models (Google API):**
+
+| Model | Description | Aspect Ratio Support |
+|-------|-------------|---------------------|
+| `gemini-2.5-flash-image` | Fast, high quality image generation | Yes |
+| `gemini-3-pro-image` | Highest quality, 4K resolution | Yes |
+| `gemini-nano-banana` | Fast, efficient (alias for 2.5-flash) | Yes |
+| `gemini-nano-banana-pro` | 4K quality (alias for 3-pro) | Yes |
+
+Get Gemini API key from: https://ai.google.dev/
 
 ### Runtime Configuration (.runtime_config.json)
 
