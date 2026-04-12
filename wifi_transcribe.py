@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import requests
 from dotenv import load_dotenv
-from faster_whisper import WhisperModel
+import whisper
 from rich.console import Console
 
 try:
@@ -305,7 +305,7 @@ def send_sound_command(sock: socket.socket, sound_id: int):
         console.print(f"[red]Failed to send sound command:[/red] {exc}")
 
 
-def transcribe_worker(model: WhisperModel):
+def transcribe_worker(model):
     """Consume raw audio from the queue and run Whisper transcription."""
     while not stop_event.is_set():
         try:
@@ -360,12 +360,11 @@ def transcribe_worker(model: WhisperModel):
 
         console.print(f"[magenta]Transcribing {secs:.2f}s of WiFi audio...[/magenta]")
         try:
-            segments, _ = model.transcribe(
+            result = model.transcribe(
                 audio_np,
-                beam_size=5,
                 language=LANGUAGE,
             )
-            transcription = "".join(segment.text for segment in segments).strip()
+            transcription = result["text"].strip()
             if transcription:
                 console.print(f"[bold green]Transcription:[/bold green] {transcription}")
                 # Sound 3 = powerUp (transcription complete)
@@ -992,34 +991,23 @@ def make_print_image_copy(image_path: str, task_id: str = ""):
         return None
 
 
-def resolve_compute_type(device: str, compute_type: str) -> str:
-    """
-    The pure int8 path is CPU-only; for CUDA use int8_float16 to keep quantization
-    benefits without tripping unsupported kernels.
-    """
-    if device.lower() == "cuda" and compute_type.lower() == "int8":
-        console.print("[yellow]WHISPER_COMPUTE_TYPE=int8 is CPU-only; using int8_float16 for CUDA.[/yellow]")
-        return "int8_float16"
-    return compute_type
-
-
-def load_whisper_model() -> WhisperModel:
+def load_whisper_model():
     """
     Try CUDA first, but fall back to CPU so the service still runs if the GPU setup
     is missing the right runtime or drivers.
     """
-    attempts = [(DEVICE, resolve_compute_type(DEVICE, COMPUTE_TYPE))]
+    attempts = [DEVICE]
     if DEVICE.lower() == "cuda":
-        attempts.append(("cpu", "int8"))
+        attempts.append("cpu")
 
     last_error = None
-    for device, compute_type in attempts:
-        console.print(f"[bold blue]Loading Whisper model: {MODEL_SIZE} ({device}, {compute_type})[/bold blue]")
+    for device in attempts:
+        console.print(f"[bold blue]Loading Whisper model: {MODEL_SIZE} ({device})[/bold blue]")
         try:
-            return WhisperModel(MODEL_SIZE, device=device, compute_type=compute_type)
+            return whisper.load_model(MODEL_SIZE, device=device)
         except Exception as exc:
             last_error = exc
-            console.print(f"[red]Failed to load Whisper model on {device}/{compute_type}:[/red] {exc}")
+            console.print(f"[red]Failed to load Whisper model on {device}:[/red] {exc}")
             if device.lower() == "cuda":
                 console.print("[yellow]CUDA failed; will retry on CPU unless WHISPER_DEVICE is overridden.[/yellow]")
 

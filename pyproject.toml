@@ -5,8 +5,9 @@ description = "Voice-to-coloring-page system for children"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "torch>=2.0.0",
-    "faster-whisper",
+    "openai-whisper",
+    "torch",
+    "torchaudio",
     "sounddevice",
     "numpy",
     "rich",
@@ -22,15 +23,11 @@ dev = [
     "pytest",
 ]
 
-[tool.uv]
-dev-dependencies = [
-    "pytest",
-]
-
 [[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu124" }
+torch = { index = "pytorch-cu118" }
+torchaudio = { index = "pytorch-cu118" }
