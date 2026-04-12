@@ -37,6 +37,9 @@ uv.lock
 # Debug/test scripts
 test.py
 
+# Test data (contains personal narratives)
+test_data/
+
 # Binary packages
 *.deb
 
