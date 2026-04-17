@@ -90,7 +90,7 @@ class DebugUI:
             "seedream-v4",
             "z-image",
         ]
-        self.freepik_model_combo = tk.OptionMenu(self.model_frame, self.model_var, *freepik_models)
+        self.freepik_model_combo = tk.OptionMenu(self.model_frame, self.model_var, *freepik_models, command=lambda _: self.apply_config())
         self.freepik_model_combo.pack(side="left", padx=4)
         
         # Gemini models (using actual Google API model names)
@@ -100,7 +100,7 @@ class DebugUI:
             "gemini-2.5-flash-image",
             "gemini-2.0-flash-preview",
         ]
-        self.gemini_model_combo = tk.OptionMenu(self.model_frame, self.gemini_model_var, *gemini_models)
+        self.gemini_model_combo = tk.OptionMenu(self.model_frame, self.gemini_model_var, *gemini_models, command=lambda _: self.apply_config())
         # Initially hidden, shown when gemini selected
 
         num_frame = tk.Frame(root)

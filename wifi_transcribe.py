@@ -672,7 +672,7 @@ def _call_gemini_generate_content(api_key: str, model_id: str, prompt: str, mode
     headers = {"Content-Type": "application/json"}
     
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        resp = requests.post(url, headers=headers, json=payload, timeout=180)
         if resp.status_code != 200:
             return False, None, f"HTTP {resp.status_code}: {resp.text[:200]}"
         
@@ -723,7 +723,7 @@ def _call_imagen_predict(api_key: str, model_id: str, prompt: str, model_name: s
     headers = {"Content-Type": "application/json"}
     
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        resp = requests.post(url, headers=headers, json=payload, timeout=180)
         if resp.status_code != 200:
             return False, None, f"HTTP {resp.status_code}: {resp.text[:200]}"
         
