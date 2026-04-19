@@ -462,7 +462,6 @@ def wifi_listener():
                 continue
     finally:
         flush_buffer(reason="disconnect", forced=True)
-        stop_event.set()
         if wav_writer:
             wav_writer.close()
         sock.close()
@@ -1080,30 +1079,36 @@ def load_whisper_model():
 
 
 def wifi_listener_with_retry():
-    """Connect to WiFi with exponential backoff retry."""
-    max_retries = 10
-    base_delay = 1.0  # Start with 1 second
-    max_delay = 30.0  # Cap at 30 seconds
+    """Connect to WiFi with retry every 5 seconds for up to 10 minutes."""
+    max_retries = 120  # 10 minutes at 5 seconds each
+    retry_delay = 5.0
     
     for attempt in range(1, max_retries + 1):
+        if stop_event.is_set():
+            console.print("[yellow]Stop requested, exiting retry loop.[/yellow]")
+            break
+        
         try:
             console.print(f"[blue]Connection attempt {attempt}/{max_retries}...[/blue]")
             wifi_listener()
-            # If wifi_listener returns normally, break the retry loop
-            break
+            # If wifi_listener returns and stop_event is set, user stopped
+            if stop_event.is_set():
+                break
+            # Otherwise connection dropped unexpectedly - retry
+            console.print(f"[yellow]Connection lost. Retrying in {retry_delay:.0f} seconds... ({attempt}/{max_retries})[/yellow]")
+            time.sleep(retry_delay)
         except (socket.error, ConnectionRefusedError, OSError) as e:
-            if attempt == max_retries:
-                console.print(f"[red]Failed to connect after {max_retries} attempts. Giving up.[/red]")
-                raise
-            
-            delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+            if stop_event.is_set():
+                break
             console.print(f"[yellow]Connection failed: {e}[/yellow]")
-            console.print(f"[yellow]Retrying in {delay:.1f} seconds...[/yellow]")
-            time.sleep(delay)
+            console.print(f"[yellow]Retrying in {retry_delay:.0f} seconds... ({attempt}/{max_retries})[/yellow]")
+            time.sleep(retry_delay)
         except Exception as e:
-            # For other exceptions, don't retry
             console.print(f"[red]Unexpected error: {e}[/red]")
             raise
+    
+    if not stop_event.is_set():
+        console.print("[red]Failed to reconnect after 10 minutes. Giving up.[/red]")
 
 
 def main():
@@ -1123,6 +1128,7 @@ def main():
         console.print("\n[red]Stopping...[/red]")
         stop_event.set()
     finally:
+        stop_event.set()
         transcribe_queue.put(None)
         transcriber.join()
         flusher.join()
