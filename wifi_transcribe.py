@@ -99,6 +99,21 @@ runtime_flags = {
 }
 
 
+def _enable_keepalive(sock: socket.socket):
+    """Enable TCP keepalive with aggressive settings for quick dead-peer detection."""
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        # Linux-specific TCP keepalive tuning
+        if hasattr(socket, "TCP_KEEPIDLE"):
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 5)
+        if hasattr(socket, "TCP_KEEPINTVL"):
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 1)
+        if hasattr(socket, "TCP_KEEPCNT"):
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+    except (OSError, ValueError) as exc:
+        console.print(f"[yellow]Could not enable TCP keepalive: {exc}[/yellow]")
+
+
 def read_exact(sock: socket.socket, n: int):
     """Read exactly n bytes from socket; return None on EOF or shutdown."""
     buf = bytearray()
@@ -109,6 +124,9 @@ def read_exact(sock: socket.socket, n: int):
             if stop_event.is_set():
                 return None
             continue
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError) as exc:
+            console.print(f"[yellow]Socket error during read: {exc}[/yellow]")
+            return None
         if not chunk:
             return None
         buf.extend(chunk)
@@ -398,6 +416,7 @@ def wifi_listener():
     console.print(f"[blue]Connecting to {HOST}:{PORT}...[/blue]")
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(1.0)
+    _enable_keepalive(sock)
     sock.connect((HOST, PORT))
     wifi_socket = sock  # Store for sound commands
     console.print("[green]Connected to WiFi audio source.[/green]")
