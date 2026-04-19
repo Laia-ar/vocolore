@@ -995,12 +995,16 @@ def save_pdf_copy(image_path: str):
                 target_h = max_h
                 target_w = int(img.width * (target_h / img.height))
             resized = img.resize((target_w, target_h))
-            x = (page_w - target_w) // 2  # Center horizontally
-            # For A5/A6: place in upper half, for A4: center vertically
-            if use_a4_canvas:
-                y = margin  # Top margin only
+            # For A6: top-left corner; for A5: centered horizontally on A4 upper half; for A4: centered
+            if size_upper == "A6":
+                x = margin
+                y = margin
+            elif use_a4_canvas:
+                x = (page_w - target_w) // 2
+                y = margin
             else:
-                y = (page_h - target_h) // 2  # Center vertically
+                x = (page_w - target_w) // 2
+                y = (page_h - target_h) // 2
             canvas.paste(resized, (x, y))
             canvas.save(pdf_path, "PDF", resolution=300.0)
         canvas_info = f" on A4 upper half ({page_size} size)" if use_a4_canvas else ""
@@ -1045,12 +1049,16 @@ def make_print_image_copy(image_path: str, task_id: str = ""):
                 target_w = int(img.width * (target_h / img.height))
             resized = img.resize((target_w, target_h))
             canvas = Image.new("RGB", (page_w, page_h), "white")
-            x = (page_w - target_w) // 2  # Center horizontally
-            # For A5/A6: place in upper area, for A4: center vertically
-            if use_a4_canvas:
-                y = margin  # Top margin only
+            # For A6: top-left corner; for A5: centered horizontally on A4 upper half; for A4: centered
+            if size_upper == "A6":
+                x = margin
+                y = margin
+            elif use_a4_canvas:
+                x = (page_w - target_w) // 2
+                y = margin
             else:
-                y = (page_h - target_h) // 2  # Center vertically
+                x = (page_w - target_w) // 2
+                y = (page_h - target_h) // 2
             canvas.paste(resized, (x, y))
             canvas.save(out_path, "PNG")
         canvas_info = f" on A4 upper half ({page_size} size)" if use_a4_canvas else ""
