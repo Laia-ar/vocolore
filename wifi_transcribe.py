@@ -45,6 +45,7 @@ PRINT_TO_PDF = os.getenv("PRINT_TO_PDF", "0") == "1"
 PRINT_PDF_DIR = os.getenv("PRINT_PDF_DIR", "printouts")
 SAVE_CLIP_WAV = os.getenv("SAVE_CLIP_WAV", "1") == "1"
 CLIP_WAV_DIR = os.getenv("CLIP_WAV_DIR", "clips")
+IMAGE_DIR = os.getenv("IMAGE_DIR", "images")
 DEBUG_TIMING = os.getenv("DEBUG_TIMING", "0") == "1"
 OPEN_IMAGE = os.getenv("OPEN_IMAGE", "0") == "1"
 RUNTIME_CONFIG_FILE = os.getenv("RUNTIME_CONFIG_FILE", ".runtime_config.json")
@@ -775,7 +776,8 @@ def send_gemini_image_request(prompt: str, model_name: str = "gemini-2.5-flash-i
     
     # Save image
     try:
-        filename = f"generated_image_gemini_{int(time.time())}.png"
+        os.makedirs(IMAGE_DIR, exist_ok=True)
+        filename = os.path.join(IMAGE_DIR, f"generated_image_gemini_{int(time.time())}.png")
         with open(filename, "wb") as fh:
             fh.write(image_bytes)
         console.print(f"[bold green]Image saved to {filename}[/bold green]")
@@ -886,7 +888,8 @@ def send_image_generation_request(prompt: str):
 
         img_resp = requests.get(image_url, stream=True, timeout=30)
         img_resp.raise_for_status()
-        filename = f"generated_image_{task_id}.png"
+        os.makedirs(IMAGE_DIR, exist_ok=True)
+        filename = os.path.join(IMAGE_DIR, f"generated_image_{task_id}.png")
         with open(filename, "wb") as fh:
             for chunk in img_resp.iter_content(chunk_size=8192):
                 if chunk:
@@ -925,12 +928,14 @@ def send_image_generation_request(prompt: str):
 
 
 def get_page_dimensions(page_size: str = None) -> tuple[int, int]:
-    """Return page dimensions in pixels at 300 DPI for A4 or A5."""
+    """Return page dimensions in pixels at 300 DPI for A4, A5, or A6."""
     if page_size is None:
         page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
     size = page_size.upper()
     if size == "A5":
         return 1748, 2480  # 148x210 mm at 300 DPI
+    if size == "A6":
+        return 1240, 1748  # 105x148 mm at 300 DPI
     return 2480, 3508  # A4 default: 210x297 mm at 300 DPI
 
 
@@ -942,13 +947,14 @@ def save_pdf_copy(image_path: str):
         console.print("[yellow]PRINT_TO_PDF is enabled but Pillow is not installed; skipping PDF export.[/yellow]")
         return None
     page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
-    is_a5 = page_size.upper() == "A5"
+    size_upper = page_size.upper()
+    use_a4_canvas = size_upper in ("A5", "A6")  # Small sizes print on A4 paper
     
-    # For A5, use A4 canvas and place image in upper half
+    # For A5/A6, use A4 canvas and place image in upper half
     # For A4, use normal A4 canvas
-    if is_a5:
+    if use_a4_canvas:
         page_w, page_h = 2480, 3508  # A4 dimensions
-        content_h = 1748  # Upper half (A5 height)
+        content_h = 1748 if size_upper == "A5" else 1240  # Upper half height
     else:
         page_w, page_h = get_page_dimensions(page_size)
         content_h = page_h
@@ -972,14 +978,15 @@ def save_pdf_copy(image_path: str):
                 target_w = int(img.width * (target_h / img.height))
             resized = img.resize((target_w, target_h))
             x = (page_w - target_w) // 2  # Center horizontally
-            # For A5: place in upper half, for A4: center vertically
-            if is_a5:
+            # For A5/A6: place in upper half, for A4: center vertically
+            if use_a4_canvas:
                 y = margin  # Top margin only
             else:
                 y = (page_h - target_h) // 2  # Center vertically
             canvas.paste(resized, (x, y))
             canvas.save(pdf_path, "PDF", resolution=300.0)
-        console.print(f"[green]Saved PDF copy to {pdf_path} ({page_size}{' on A4 upper half' if is_a5 else ''})[/green]")
+        canvas_info = f" on A4 upper half ({page_size} size)" if use_a4_canvas else ""
+        console.print(f"[green]Saved PDF copy to {pdf_path} ({page_size}{canvas_info})[/green]")
         return str(pdf_path)
     except Exception as exc:
         console.print(f"[red]PDF export failed:[/red] {exc}")
@@ -987,17 +994,18 @@ def save_pdf_copy(image_path: str):
 
 
 def make_print_image_copy(image_path: str, task_id: str = ""):
-    """Build a print-friendly PNG with the image scaled to fill width (A4 or A5 on A4 paper)."""
+    """Build a print-friendly PNG with the image scaled to fill width (A4, A5, or A6 on A4 paper)."""
     if Image is None:
         return None
     page_size = get_config("PRINT_PAGE_SIZE", PRINT_PAGE_SIZE)
-    is_a5 = page_size.upper() == "A5"
+    size_upper = page_size.upper()
+    use_a4_canvas = size_upper in ("A5", "A6")  # Small sizes print on A4 paper
     
-    # For A5, use A4 canvas and place in upper half
+    # For A5/A6, use A4 canvas and place image in upper area
     # For A4, use normal A4 canvas
-    if is_a5:
+    if use_a4_canvas:
         page_w, page_h = 2480, 3508  # A4 dimensions
-        content_h = 1748  # Upper half (A5 height)
+        content_h = 1748 if size_upper == "A5" else 1240  # Upper area height
     else:
         page_w, page_h = get_page_dimensions(page_size)
         content_h = page_h
@@ -1020,14 +1028,15 @@ def make_print_image_copy(image_path: str, task_id: str = ""):
             resized = img.resize((target_w, target_h))
             canvas = Image.new("RGB", (page_w, page_h), "white")
             x = (page_w - target_w) // 2  # Center horizontally
-            # For A5: place in upper half, for A4: center vertically
-            if is_a5:
+            # For A5/A6: place in upper area, for A4: center vertically
+            if use_a4_canvas:
                 y = margin  # Top margin only
             else:
                 y = (page_h - target_h) // 2  # Center vertically
             canvas.paste(resized, (x, y))
             canvas.save(out_path, "PNG")
-        console.print(f"[green]Prepared {page_size}{' on A4 upper half' if is_a5 else ''} print image at {out_path}[/green]")
+        canvas_info = f" on A4 upper half ({page_size} size)" if use_a4_canvas else ""
+        console.print(f"[green]Prepared {page_size}{canvas_info} print image at {out_path}[/green]")
         return str(out_path)
     except Exception as exc:
         console.print(f"[red]Print image prep failed:[/red] {exc}")

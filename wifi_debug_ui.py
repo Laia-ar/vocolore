@@ -5,9 +5,11 @@ Debug-oriented Tkinter UI for WiFi transcription.
 - Full log output viewer
 """
 
+import atexit
 import json
 import os
 import queue
+import signal
 import subprocess
 import sys
 import threading
@@ -15,6 +17,20 @@ import tkinter as tk
 from tkinter import scrolledtext
 
 DEBUG = os.getenv("DEBUG", "0") == "1"
+
+
+def cleanup_process(proc):
+    """Ensure process is terminated."""
+    if proc and proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except (subprocess.TimeoutExpired, ProcessLookupError):
+            try:
+                proc.kill()
+                proc.wait(timeout=1)
+            except ProcessLookupError:
+                pass
 
 
 class DebugUI:
@@ -27,6 +43,17 @@ class DebugUI:
         self.reader_thread = None
         self.msg_queue: "queue.Queue[str]" = queue.Queue()
         self.running = False
+        self._cleanup_registered = False
+        
+        # Register cleanup on exit
+        atexit.register(self._ensure_cleanup)
+        
+        # Handle signals
+        def signal_handler(signum, frame):
+            self.on_close()
+        
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
 
         cfg = self._load_runtime_config()
 
@@ -39,6 +66,11 @@ class DebugUI:
         self.stop_btn.pack(side="left", padx=4)
         self.status_var = tk.StringVar(value="Idle")
         tk.Label(btn_frame, textvariable=self.status_var, anchor="w").pack(side="left", padx=8)
+        
+        # Battery indicator
+        self.battery_var = tk.StringVar(value="Bat: --")
+        self.battery_lbl = tk.Label(btn_frame, textvariable=self.battery_var, anchor="w", fg="#666666")
+        self.battery_lbl.pack(side="right", padx=8)
 
         # Toggles and numeric settings
         opt_frame = tk.Frame(root)
@@ -65,7 +97,7 @@ class DebugUI:
         
         # Page size selector
         tk.Label(opt_frame, text="Page:").pack(side="left", padx=(12, 4))
-        self.page_size_combo = tk.OptionMenu(opt_frame, self.page_size_var, "A4", "A5", command=lambda _: self.apply_config())
+        self.page_size_combo = tk.OptionMenu(opt_frame, self.page_size_var, "A4", "A5", "A6", command=lambda _: self.apply_config())
         self.page_size_combo.pack(side="left", padx=4)
         
         # Provider selector
@@ -120,6 +152,7 @@ class DebugUI:
         self.log.pack(fill="both", expand=True, padx=8, pady=4)
 
         self.root.after(100, self.drain_messages)
+        self.root.after(1000, self._update_battery)  # Update battery every second
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.on_provider_change()  # Initialize correct model selector
         self.apply_config()
@@ -134,6 +167,30 @@ class DebugUI:
             except Exception:
                 return {}
         return {}
+
+    def _update_battery(self):
+        """Update battery level indicator from runtime config."""
+        try:
+            cfg = self._load_runtime_config()
+            level = cfg.get("BATTERY_LEVEL")
+            if level is not None:
+                try:
+                    pct = int(level)
+                    if pct <= 20:
+                        self.battery_var.set(f"Bat: {pct}%")
+                        self.battery_lbl.config(fg="#d9534f")  # Red (low)
+                    elif pct <= 50:
+                        self.battery_var.set(f"Bat: {pct}%")
+                        self.battery_lbl.config(fg="#f0ad4e")  # Orange (medium)
+                    else:
+                        self.battery_var.set(f"Bat: {pct}%")
+                        self.battery_lbl.config(fg="#5cb85c")  # Green (good)
+                except (ValueError, TypeError):
+                    pass
+        except Exception:
+            pass
+        # Schedule next update
+        self.root.after(1000, self._update_battery)
 
     def _write_runtime_config(self):
         cfg = self._load_runtime_config()
@@ -243,13 +300,18 @@ class DebugUI:
         self.reader_thread.start()
 
     def stop_proc(self):
-        if not self.running or not self.proc:
+        """Stop the subprocess with guaranteed cleanup."""
+        if not self.running and not self.proc:
             return
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        
+        self.running = False
+        
+        if self.proc:
+            cleanup_process(self.proc)
+            self.proc = None
+        
+        if self.reader_thread and self.reader_thread.is_alive():
+            self.reader_thread.join(timeout=2)
         self.running = False
         self.start_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
@@ -280,9 +342,17 @@ class DebugUI:
 
         self.root.after(100, self.drain_messages)
 
+    def _ensure_cleanup(self):
+        """Guaranteed cleanup called on exit."""
+        if not self._cleanup_registered:
+            self._cleanup_registered = True
+            self.stop_proc()
+    
     def on_close(self):
-        self.stop_proc()
+        """Handle window close event."""
+        self._ensure_cleanup()
         self.root.destroy()
+        sys.exit(0)
 
 
 if __name__ == "__main__":

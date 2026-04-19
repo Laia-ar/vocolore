@@ -7,15 +7,31 @@ User-facing Tkinter UI for WiFi transcription.
 It runs wifi_transcribe.py as a subprocess and parses its stdout to drive the UI.
 """
 
+import atexit
 import json
 import os
 import queue
+import signal
 import subprocess
 import sys
 import threading
 import time
 import tkinter as tk
 from pathlib import Path
+
+
+def cleanup_process(proc):
+    """Ensure process is terminated."""
+    if proc and proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except (subprocess.TimeoutExpired, ProcessLookupError):
+            try:
+                proc.kill()
+                proc.wait(timeout=1)
+            except ProcessLookupError:
+                pass
 
 try:
     from PIL import Image, ImageTk  # type: ignore
@@ -53,6 +69,17 @@ class UserUI:
         self.reader_thread = None
         self.msg_queue: "queue.Queue[str]" = queue.Queue()
         self.running = False
+        self._cleanup_registered = False
+        
+        # Register cleanup on exit
+        atexit.register(self._ensure_cleanup)
+        
+        # Handle signals
+        def signal_handler(signum, frame):
+            self.on_close()
+        
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
 
         # Top controls
         # Status indicators
@@ -62,6 +89,8 @@ class UserUI:
         self.lbl_ready.pack(side="left", padx=6)
         self.lbl_btn = StatusLabel(status_frame, text="Button: idle", width=20, bg="#cccccc", font=("Helvetica", 12))
         self.lbl_btn.pack(side="left", padx=6)
+        self.lbl_battery = StatusLabel(status_frame, text="Bat: --", width=10, bg="#cccccc", font=("Helvetica", 12))
+        self.lbl_battery.pack(side="left", padx=6)
         self.lbl_transcribe = StatusLabel(status_frame, text="Transcribe: idle", width=20, bg="#cccccc", font=("Helvetica", 12))
         self.lbl_transcribe.pack(side="left", padx=6)
         self.lbl_freepik = StatusLabel(status_frame, text="Freepik: off", width=20, bg="#cccccc", font=("Helvetica", 12))
@@ -133,19 +162,29 @@ class UserUI:
         self.reader_thread = threading.Thread(target=self._reader, daemon=True)
         self.reader_thread.start()
 
+    def _ensure_cleanup(self):
+        """Guaranteed cleanup called on exit."""
+        if not self._cleanup_registered:
+            self._cleanup_registered = True
+            self.stop_proc()
+    
     def stop_proc(self):
-        if not self.running or not self.proc:
-            return
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        """Stop the subprocess with guaranteed cleanup."""
+        was_running = self.running
         self.running = False
-        self.lbl_btn.set_state("Button: idle", "#cccccc")
-        self.lbl_transcribe.set_state("Transcribe: idle", "#cccccc")
-        self.lbl_freepik.set_state("Freepik: off", "#cccccc")
-        self.lbl_ready.set_state("Ready: no", "#f0ad4e")
+        
+        if self.proc:
+            cleanup_process(self.proc)
+            self.proc = None
+        
+        if self.reader_thread and self.reader_thread.is_alive():
+            self.reader_thread.join(timeout=2)
+        
+        if was_running:
+            self.lbl_btn.set_state("Button: idle", "#cccccc")
+            self.lbl_transcribe.set_state("Transcribe: idle", "#cccccc")
+            self.lbl_freepik.set_state("Freepik: off", "#cccccc")
+            self.lbl_ready.set_state("Ready: no", "#f0ad4e")
 
     def _reader(self):
         if not self.proc or not self.proc.stdout:
@@ -248,6 +287,19 @@ class UserUI:
                         self.lbl_btn.set_state("Button: UP", "#cccccc")
                     elif btn_state == "idle":
                         self.lbl_btn.set_state("Button: idle", "#cccccc")
+                    # Battery level (with color coding)
+                    battery_level = data.get("BATTERY_LEVEL")
+                    if battery_level is not None:
+                        try:
+                            level = int(battery_level)
+                            if level <= 20:
+                                self.lbl_battery.set_state(f"Bat: {level}%", "#d9534f")  # Red (low)
+                            elif level <= 50:
+                                self.lbl_battery.set_state(f"Bat: {level}%", "#f0ad4e")  # Orange (medium)
+                            else:
+                                self.lbl_battery.set_state(f"Bat: {level}%", "#5cb85c")  # Green (good)
+                        except (ValueError, TypeError):
+                            pass
                     # Update image preview if path changed
                     if last_image and last_image != self.last_image_path:
                         self.last_image_path = last_image
@@ -300,8 +352,10 @@ class UserUI:
         self.root.after(100, self.drain_messages)
 
     def on_close(self):
-        self.stop_proc()
+        """Handle window close event."""
+        self._ensure_cleanup()
         self.root.destroy()
+        sys.exit(0)
 
 
 if __name__ == "__main__":

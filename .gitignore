@@ -10,6 +10,7 @@ __pycache__/
 # Local artifacts
 clips/
 images/
+printouts/
 
 # Secrets & local config
 config.env
